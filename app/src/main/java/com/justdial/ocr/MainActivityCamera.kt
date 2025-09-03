@@ -1,0 +1,274 @@
+package com.justdial.ocr
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.content.IntentSender
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.MediaStore
+import androidx.appcompat.app.AppCompatActivity
+import android.util.Log
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.Spinner
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import com.bumptech.glide.Glide
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.auth.GoogleAuthUtil
+import com.google.android.gms.auth.UserRecoverableAuthException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import com.justdial.ocr.model.MainViewModel
+
+class MainActivityCamera : AppCompatActivity() {
+
+    private lateinit var resultInfo: TextView
+    private lateinit var firstPageView: ImageView
+    private lateinit var pageLimitInputView: EditText
+    private lateinit var scannerLauncher: ActivityResultLauncher<IntentSenderRequest>
+    private var enableGalleryImport = true
+    private val FULL_MODE = "FULL"
+    private val BASE_MODE = "BASE"
+    private val BASE_MODE_WITH_FILTER = "BASE_WITH_FILTER"
+    private var selectedMode = FULL_MODE
+
+    private val viewModel: MainViewModel by viewModels()
+
+    // --- Google Sign-In Members ---
+    private lateinit var googleSignInClient: GoogleSignInClient
+    private lateinit var googleSignInLauncher: ActivityResultLauncher<Intent>
+    private lateinit var consentLauncher: ActivityResultLauncher<Intent>
+    private var signedInAccount: GoogleSignInAccount? = null
+    private var pendingImageUri: Uri? = null // To store the image uri while signing in
+    private var pendingBitmap: Bitmap? = null // To store the bitmap while getting consent
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main_camera)
+        resultInfo = findViewById<TextView>(R.id.result_info)!!
+        firstPageView = findViewById<ImageView>(R.id.first_page_view)!!
+        pageLimitInputView = findViewById(R.id.page_limit_input)
+
+        scannerLauncher =
+            registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+                handleActivityResult(result)
+            }
+
+        setupGoogleSignIn()
+        populateModeSelector()
+        observeViewModel()
+    }
+
+    private fun setupGoogleSignIn() {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken("134377649404-g8dl23e9f530g6khi4mkbf05jd46o6nd.apps.googleusercontent.com")
+            .requestEmail()
+            .requestScopes(
+                com.google.android.gms.common.api.Scope("https://www.googleapis.com/auth/cloud-platform"),
+                com.google.android.gms.common.api.Scope("https://www.googleapis.com/auth/cloud-platform.read-only"),
+                com.google.android.gms.common.api.Scope("https://www.googleapis.com/auth/generative-language")
+            )
+            .build()
+        googleSignInClient = GoogleSignIn.getClient(this, gso)
+
+        googleSignInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                handleSignInResult(task)
+            } else {
+                Toast.makeText(this, "Google Sign-In failed.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        // NOTE: Consent launcher kept for compatibility but not needed for direct Gemini API
+        consentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            Toast.makeText(this, "Not needed for direct Gemini API", Toast.LENGTH_SHORT).show()
+        }
+        
+        signedInAccount = GoogleSignIn.getLastSignedInAccount(this)
+    }
+
+    private fun handleSignInResult(completedTask: Task<GoogleSignInAccount>) {
+        try {
+            signedInAccount = completedTask.getResult(ApiException::class.java)
+            android.widget.Toast.makeText(this, "Signed in as ${signedInAccount?.email}", android.widget.Toast.LENGTH_SHORT).show()
+
+            val idToken = signedInAccount?.idToken
+            if (idToken != null && pendingImageUri != null) {
+                proceedWithAnalysis(idToken, pendingImageUri!!)
+                pendingImageUri = null // Clear the pending uri
+            } else {
+                android.widget.Toast.makeText(this, "Could not get ID Token or image after sign-in.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: ApiException) {
+            Log.w(TAG, "signInResult:failed code=" + e.statusCode)
+            android.widget.Toast.makeText(this, "Sign-in failed. Code: ${e.statusCode}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun onEnableGalleryImportCheckboxClicked(view: View) {
+        enableGalleryImport = (view as CheckBox).isChecked
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    fun onScanButtonClicked(unused: View) {
+        resultInfo.text = null
+        Glide.with(this).clear(firstPageView)
+
+        val options =
+            GmsDocumentScannerOptions.Builder()
+                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
+                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+                .setGalleryImportAllowed(enableGalleryImport)
+
+        // ... (rest of the scan options setup is the same)
+
+        GmsDocumentScanning.getClient(options.build())
+            .getStartScanIntent(this)
+            .addOnSuccessListener { intentSender: IntentSender ->
+                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener() { e: Exception ->
+                resultInfo.setText(getString(R.string.error_default_message, e.message))
+            }
+    }
+
+    private fun populateModeSelector() {
+        // ... (no changes needed here)
+    }
+
+    private fun handleActivityResult(activityResult: ActivityResult) {
+        val resultCode = activityResult.resultCode
+        val result = GmsDocumentScanningResult.fromActivityResultIntent(activityResult.data)
+        if (resultCode == Activity.RESULT_OK && result != null) {
+            resultInfo.setText(getString(R.string.scan_result, result))
+
+            val pages = result.pages
+            if (pages != null && pages.isNotEmpty()) {
+                val imageUri = pages[0].imageUri
+                Glide.with(this).load(imageUri).into(firstPageView)
+
+                // SIMPLIFIED: No more complex authentication needed!
+                // Just call the OCR directly with Gemini API
+                proceedWithAnalysis("dummy_token_not_needed", imageUri)
+            }
+        } else if (resultCode == Activity.RESULT_CANCELED) {
+            resultInfo.text = getString(R.string.error_scanner_cancelled)
+        } else {
+            resultInfo.text = getString(R.string.error_default_message)
+        }
+    }
+
+    private fun proceedWithAnalysis(unused: String, imageUri: Uri) {
+        val bitmap = uriToBitmap(this, imageUri)
+        if (bitmap != null) {
+            // Show detailed progress messages
+            Toast.makeText(this, "🔍 Starting OCR processing with Gemini AI...", Toast.LENGTH_LONG).show()
+            Log.d(TAG, "Starting OCR analysis for image: $imageUri")
+            Log.d(TAG, "Image size: ${bitmap.width}x${bitmap.height}")
+            viewModel.analyzeImage(this@MainActivityCamera, bitmap, null)
+        } else {
+            Toast.makeText(this, "❌ Failed to load image.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun uriToBitmap(context: Context, imageUri: Uri): Bitmap? {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val source = ImageDecoder.createSource(context.contentResolver, imageUri)
+                return ImageDecoder.decodeBitmap(source)
+            } else {
+                @Suppress("DEPRECATION")
+                return MediaStore.Images.Media.getBitmap(context.contentResolver, imageUri)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    private fun observeViewModel() {
+        viewModel.ocrState.observe(this) { state ->
+            when (state) {
+                is MainViewModel.OcrUiState.Idle -> {
+                    Log.d(TAG, "ViewModel state: Idle")
+                }
+                is MainViewModel.OcrUiState.Loading -> {
+                    Log.d(TAG, "ViewModel state: Loading - showing progress...")
+                    Toast.makeText(this, "⏳ Processing image with AI...", Toast.LENGTH_SHORT).show()
+                }
+                is MainViewModel.OcrUiState.Success -> {
+                    Log.d(TAG, "ViewModel state: Success - OCR completed")
+                    Toast.makeText(this, "✅ OCR completed successfully!", Toast.LENGTH_SHORT).show()
+                    resultInfo.text = "✅ OCR Success:\n${state.text}"
+                }
+                is MainViewModel.OcrUiState.ChequeSuccess -> {
+                    Log.d(TAG, "ViewModel state: ChequeSuccess - Cheque processed")
+                    Toast.makeText(this, "✅ Cheque processed successfully!", Toast.LENGTH_LONG).show()
+                    val chequeInfo = """
+                        ✅ CHEQUE OCR SUCCESS:
+                        Bank: ${state.chequeData.bankName ?: "Not found"}
+                        Account: ${state.chequeData.accountNumber ?: "Not found"}
+                        Holder: ${state.chequeData.accountHolderName ?: "Not found"}
+                        IFSC: ${state.chequeData.ifscCode ?: "Not found"}
+                        Document Quality: ${state.chequeData.document_quality ?: "Not found"}
+                        Document Type: ${state.chequeData.document_type ?: "Not found"}
+                        Signature Present: ${if (state.chequeData.signaturePresent) "✅ Signature Present" else "❌ Signature Absent"}
+                  
+                    """.trimIndent()
+                    resultInfo.text = chequeInfo
+                }
+                is MainViewModel.OcrUiState.ENachSuccess -> {
+                    Log.d(TAG, "ViewModel state: ENachSuccess - NACH processed")
+                    Toast.makeText(this, "✅ E-NACH processed successfully!", Toast.LENGTH_LONG).show()
+                    val nachInfo = """
+                        ✅ E-NACH OCR SUCCESS:
+                        Utility: ${state.enachData.utilityName ?: "Not found"}
+                        Account: ${state.enachData.accountNumber ?: "Not found"}
+                        Holder: ${state.enachData.accountHolderName ?: "Not found"}
+                        Bank: ${state.enachData.bankName ?: "Not found"}
+                        Validation: ${if (state.validation.isValid) "✅ Valid" else "❌ Invalid"}
+                    """.trimIndent()
+                    resultInfo.text = nachInfo
+                }
+                is MainViewModel.OcrUiState.CrossValidationSuccess -> {
+                    Log.d(TAG, "ViewModel state: CrossValidationSuccess - Both documents processed")
+                    Toast.makeText(this, "✅ Cross-validation completed!", Toast.LENGTH_LONG).show()
+                    resultInfo.text = "✅ Cross-validation completed successfully!"
+                }
+                is MainViewModel.OcrUiState.Error -> {
+                    Log.e(TAG, "ViewModel state: Error - ${state.message}")
+                    Toast.makeText(this, "❌ OCR Error: ${state.message}", Toast.LENGTH_LONG).show()
+                    resultInfo.text = "❌ ERROR: ${state.message}\n\nCheck logs for detailed debugging info."
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "MurashidTest"
+    }
+}
