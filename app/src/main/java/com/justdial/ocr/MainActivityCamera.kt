@@ -228,16 +228,23 @@ class MainActivityCamera : AppCompatActivity() {
                 is MainViewModel.OcrUiState.ChequeSuccess -> {
                     Log.d(TAG, "ViewModel state: ChequeSuccess - Cheque processed")
                     Toast.makeText(this, "✅ Cheque processed successfully!", Toast.LENGTH_LONG).show()
+                    val fraudList = state.chequeData.fraudIndicators
+                    val fraudText = if (fraudList.isEmpty()) "None" else fraudList.joinToString(
+                        separator = "\n  - ",
+                        prefix = "\n  - "
+                    )
+
                     val chequeInfo = """
                         ✅ CHEQUE OCR SUCCESS:
-                        Bank: ${state.chequeData.bankName ?: "Not found"}
-                        Account: ${state.chequeData.accountNumber ?: "Not found"}
-                        Holder: ${state.chequeData.accountHolderName ?: "Not found"}
-                        IFSC: ${state.chequeData.ifscCode ?: "Not found"}
-                        Document Quality: ${state.chequeData.document_quality ?: "Not found"}
-                        Document Type: ${state.chequeData.document_type ?: "Not found"}
-                        Signature Present: ${if (state.chequeData.signaturePresent) "✅ Signature Present" else "❌ Signature Absent"}
-                  
+                        Account Holder: ${displayValue(state.chequeData.accountHolderName)}
+                        Bank: ${displayValue(state.chequeData.bankName)}
+                        Account Number: ${displayValue(state.chequeData.accountNumber)}
+                        IFSC: ${displayValue(state.chequeData.ifscCode)}
+                        MICR: ${displayValue(state.chequeData.micrCode)}
+                        Signature Present: ${if (state.chequeData.signaturePresent) "Yes" else "No"}
+                        Document Quality: ${displayValue(state.chequeData.document_quality)}
+                        Document Type: ${displayValue(state.chequeData.document_type)}
+                        Fraud Indicators: $fraudText
                     """.trimIndent()
                     resultInfo.text = chequeInfo
                 }
@@ -266,6 +273,11 @@ class MainActivityCamera : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun displayValue(value: String?): String {
+        val v = value?.trim()
+        return if (v.isNullOrEmpty() || v.equals("null", ignoreCase = true)) "Not found" else v
     }
 
     companion object {
