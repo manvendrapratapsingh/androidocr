@@ -19,6 +19,7 @@ data class ChequeOCRData(
     val authorizationPresent: Boolean = false,
     val document_quality: String="",
     val document_type: String="",
+    val fraudIndicators: List<String> = emptyList(),
     // Quality and confidence metrics
     val processingConfidence: Float = 0.0f,
     val imageQuality: String = "",

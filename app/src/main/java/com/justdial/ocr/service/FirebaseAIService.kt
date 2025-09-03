@@ -210,6 +210,16 @@ class FirebaseAIService {
             val cleanJson = extractJsonFromResponse(jsonString)
             val jsonObject = org.json.JSONObject(cleanJson)
             
+            // Parse fraud indicators array if present
+            val fraudIndicatorsArray = jsonObject.optJSONArray("fraud_indicators")
+            val fraudIndicatorsList = mutableListOf<String>()
+            if (fraudIndicatorsArray != null) {
+                for (i in 0 until fraudIndicatorsArray.length()) {
+                    val reason = fraudIndicatorsArray.optString(i)
+                    if (!reason.isNullOrBlank()) fraudIndicatorsList.add(reason)
+                }
+            }
+
             return ChequeOCRData(
                 bankName = jsonObject.optString("bank_name", ""),
                 branchAddress = jsonObject.optString("branchAddress", ""),
@@ -225,7 +235,8 @@ class FirebaseAIService {
                 signaturePresent = jsonObject.optString("signature_present", "false").toBoolean(),
                 document_quality = jsonObject.optString("document_quality", ""),
                 document_type = jsonObject.optString("document_type", ""),
-                authorizationPresent = jsonObject.optString("authorizationPresent", "false").toBoolean()
+                authorizationPresent = jsonObject.optString("authorizationPresent", "false").toBoolean(),
+                fraudIndicators = fraudIndicatorsList
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse cheque JSON", e)

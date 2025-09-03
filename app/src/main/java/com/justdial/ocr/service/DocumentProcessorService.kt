@@ -135,21 +135,27 @@ class DocumentProcessorService {
 
     private fun createChequePrompt(): String {
         return """
-        You are an expert OCR system for Indian bank cheques. Extract the following in JSON format.
-        CRITICAL INSTRUCTION: The "account_holder_name" MUST be the name of the account owner printed on the cheque, NOT the handwritten "Pay To" name. For company cheques, this name is usually printed below the amount or near the signature line.
+        You are an expert OCR system for Indian bank cheques and Indian e-NACH forms. Extract ONLY the requested fields in valid JSON.
+        CRITICAL INSTRUCTION: The "account_holder_name" MUST be the printed name of the account owner on the cheque, NOT the handwritten "Pay To" name. For company cheques, this is usually printed near the signature line or below the amount.
         {
-            "account_holder_name": "Account owner's name (printed, NOT the payee)",
+            "account_holder_name": "printed owner name (not payee)",
             "bank_name": "Bank name",
             "account_number": "Account number",
             "ifsc_code": "IFSC code",
             "micr_code": "MICR code",
             "signature_present": true/false,
             "document_quality": "good/poor/blurry/glare/cropped",
-            "document_type": "original/photocopy/handwritten/printed"
+            "document_type": "original/photocopy/handwritten/printed",
+            "fraud_indicators": ["array of visible issues or empty"]
         }
         Rules:
-        1. Return ONLY valid JSON.
-        2. The "account_holder_name" is the most important field. Find the printed name of the company or individual who owns the account. Do NOT extract the handwritten name in the 'Pay To' line.
+        1. Return ONLY valid JSON. No extra text.
+        2. Prioritize the printed "account_holder_name"; never return the handwritten payee.
+        3. Populate "fraud_indicators" with visible reasons if the cheque looks handwritten/forged/fake. Examples: no MICR band; no bank logo/watermark; layout inconsistent with Indian cheques; MICR line missing/wrong font/length; IFSC/MICR/bank mismatch; overwrites/erasures in pre-printed areas; entire cheque appears handwritten on plain paper; signature looks copy-pasted.
+        4. If no issues are visible, set "fraud_indicators": [].
+        5. Be conservative and cite only what is visible in the image.
+        6. The "account_holder_name" is the most important field. Find the printed name of the company or individual who owns the account. Do NOT extract the handwritten name in the 'Pay To' line.
+       
         """
     }
 
