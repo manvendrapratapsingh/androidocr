@@ -42,6 +42,8 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.justdial.ocr.model.MainViewModel
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class MainActivityCamera : AppCompatActivity() {
 
@@ -247,6 +249,12 @@ class MainActivityCamera : AppCompatActivity() {
                         Fraud Indicators: $fraudText
                     """.trimIndent()
                     resultInfo.text = chequeInfo
+                    val resultIntent = Intent().apply {
+                        putExtra("result_json", Json.encodeToString(state.chequeData))
+                        putExtra("document_type", "cheque")
+                    }
+                    setResult(Activity.RESULT_OK, resultIntent)
+                    finish()
                 }
                 is MainViewModel.OcrUiState.ENachSuccess -> {
                     Log.d(TAG, "ViewModel state: ENachSuccess - NACH processed")

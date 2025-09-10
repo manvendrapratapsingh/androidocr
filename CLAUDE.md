@@ -75,10 +75,73 @@ The app’s `createChequePrompt` includes the above schema and rules.
 ## e‑NACH Prompt
 Similar schema without fraud indicators (optional), with mandatory signature presence and standard fields.
 
+## React Native Integration
+
+### Overview
+The OCR app now supports integration with React Native apps via intent-based communication. External React Native apps can launch the OCR processing and receive JSON results.
+
+### Integration Flow
+1. **React Native app** calls native module `OCRNativeModule.processCheque()`
+2. **OCRNativeModule** launches `OCRResultActivity` via intent action `com.justdial.ocr.PROCESS_DOCUMENT`
+3. **OCRResultActivity** launches `MainActivityCamera` for image capture
+4. **MainActivityCamera** captures image, processes with Firebase AI, returns JSON result
+5. **OCRResultActivity** passes result back to React Native app
+6. **React Native app** receives and displays OCR results
+
+### React Native Setup (JdReactNativeSample)
+Key files for React Native integration:
+- `android/app/src/main/java/com/jdreactnativesample/OCRNativeModule.kt` — Native bridge module
+- `android/app/src/main/java/com/jdreactnativesample/OCRNativePackage.kt` — Module registration  
+- `android/app/src/main/java/com/jdreactnativesample/MainApplication.kt` — Package registration
+- `App.tsx` — React Native UI with OCR buttons
+
+### Usage from React Native
+```javascript
+import { NativeModules } from 'react-native';
+const { OCRNative } = NativeModules;
+
+// Process cheque
+const result = await OCRNative.processCheque();
+console.log('OCR Result:', result); // JSON string with cheque data
+
+// Process e-NACH  
+const enachResult = await OCRNative.processENach();
+```
+
+### Intent Configuration
+OCRResultActivity is configured to receive external intents:
+```xml
+<activity android:name=".OCRResultActivity" android:exported="true">
+    <intent-filter>
+        <action android:name="com.justdial.ocr.PROCESS_DOCUMENT" />
+        <category android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+</activity>
+```
+
+### Result Format
+Returns JSON string with complete cheque/e-NACH data:
+```json
+{
+  "account_holder_name": "JOHN DOE",
+  "bank_name": "STATE BANK OF INDIA",
+  "account_number": "1234567890",
+  "ifsc_code": "SBIN0001234",
+  "micr_code": "110002001",
+  "signature_present": true,
+  "document_quality": "good",
+  "document_type": "printed",
+  "fraud_indicators": []
+}
+```
+
 ## Files touched in this repo
 - `app/src/main/java/com/justdial/ocr/service/DocumentProcessorService.kt` — holds `createChequePrompt` and `createENachPrompt`.
 - `app/src/main/java/com/justdial/ocr/service/FirebaseAIService.kt` — image→model call, JSON parsing.
 - `app/src/main/java/com/justdial/ocr/model/ChequeOCRData.kt` — data model (now includes `fraudIndicators`).
+- `app/src/main/java/com/justdial/ocr/OCRResultActivity.kt` — external intent handler, returns JSON results.
+- `app/src/main/java/com/justdial/ocr/MainActivityCamera.kt` — camera capture, OCR processing, result serialization.
+- `app/src/main/AndroidManifest.xml` — intent filter configuration for external access.
 
 ## Build & Test
 ```bash
@@ -90,8 +153,10 @@ Similar schema without fraud indicators (optional), with mandatory signature pre
 ## Status
 - Region: `asia-south1` (Mumbai)
 - Path: Client→Firebase AI Logic→Vertex AI (no custom backend)
-- Next: Validate App Check in production and monitor fraud indicator rate
+- React Native Integration: ✅ Complete (real OCR processing with camera capture)
+- External API: Intent-based via `com.justdial.ocr.PROCESS_DOCUMENT`
 
 ---
-Last updated: Sept 3, 2025
-Status: Firebase Vertex AI (client‑to‑client, India region)
+Last updated: Sept 10, 2025
+Status: Firebase Vertex AI (client‑to‑client, India region) + React Native Integration
+- to memorise
