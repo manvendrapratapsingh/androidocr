@@ -18,6 +18,8 @@ import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -45,11 +47,13 @@ import com.justdial.ocr.model.MainViewModel
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-class MainActivityCamera : AppCompatActivity() {
+class  MainActivityCamera : AppCompatActivity() {
 
     private lateinit var resultInfo: TextView
     private lateinit var firstPageView: ImageView
     private lateinit var pageLimitInputView: EditText
+    private lateinit var progressOverlay: LinearLayout
+    private lateinit var progressText: TextView
     private lateinit var scannerLauncher: ActivityResultLauncher<IntentSenderRequest>
     private var enableGalleryImport = true
     private val FULL_MODE = "FULL"
@@ -73,6 +77,8 @@ class MainActivityCamera : AppCompatActivity() {
         resultInfo = findViewById<TextView>(R.id.result_info)!!
         firstPageView = findViewById<ImageView>(R.id.first_page_view)!!
         pageLimitInputView = findViewById(R.id.page_limit_input)
+        progressOverlay = findViewById(R.id.progress_overlay)
+        progressText = findViewById(R.id.progress_text)
 
         scannerLauncher =
             registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -127,6 +133,7 @@ class MainActivityCamera : AppCompatActivity() {
             }
         } catch (e: ApiException) {
             Log.w(TAG, "signInResult:failed code=" + e.statusCode)
+            hideProgress()
             android.widget.Toast.makeText(this, "Sign-in failed. Code: ${e.statusCode}", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
@@ -187,14 +194,27 @@ class MainActivityCamera : AppCompatActivity() {
     private fun proceedWithAnalysis(unused: String, imageUri: Uri) {
         val bitmap = uriToBitmap(this, imageUri)
         if (bitmap != null) {
-            // Show detailed progress messages
-            Toast.makeText(this, "🔍 Starting OCR processing with Gemini AI...", Toast.LENGTH_LONG).show()
+            showProgress("Starting OCR processing...")
             Log.d(TAG, "Starting OCR analysis for image: $imageUri")
             Log.d(TAG, "Image size: ${bitmap.width}x${bitmap.height}")
             viewModel.analyzeImage(this@MainActivityCamera, bitmap, null)
         } else {
+            hideProgress()
             Toast.makeText(this, "❌ Failed to load image.", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showProgress(message: String) {
+        progressText.text = message
+        progressOverlay.visibility = View.VISIBLE
+    }
+
+    private fun hideProgress() {
+        progressOverlay.visibility = View.GONE
+    }
+
+    private fun updateProgress(message: String) {
+        progressText.text = message
     }
 
     fun uriToBitmap(context: Context, imageUri: Uri): Bitmap? {
@@ -217,18 +237,21 @@ class MainActivityCamera : AppCompatActivity() {
             when (state) {
                 is MainViewModel.OcrUiState.Idle -> {
                     Log.d(TAG, "ViewModel state: Idle")
+                    hideProgress()
                 }
                 is MainViewModel.OcrUiState.Loading -> {
                     Log.d(TAG, "ViewModel state: Loading - showing progress...")
-                    Toast.makeText(this, "⏳ Processing image with AI...", Toast.LENGTH_SHORT).show()
+                    updateProgress("Processing image...")
                 }
                 is MainViewModel.OcrUiState.Success -> {
                     Log.d(TAG, "ViewModel state: Success - OCR completed")
+                    hideProgress()
                     Toast.makeText(this, "✅ OCR completed successfully!", Toast.LENGTH_SHORT).show()
                     resultInfo.text = "✅ OCR Success:\n${state.text}"
                 }
                 is MainViewModel.OcrUiState.ChequeSuccess -> {
                     Log.d(TAG, "ViewModel state: ChequeSuccess - Cheque processed")
+                    hideProgress()
                     Toast.makeText(this, "✅ Cheque processed successfully!", Toast.LENGTH_LONG).show()
                     val fraudList = state.chequeData.fraudIndicators
                     val fraudText = if (fraudList.isEmpty()) "None" else fraudList.joinToString(
@@ -324,6 +347,7 @@ class MainActivityCamera : AppCompatActivity() {
                 }
                 is MainViewModel.OcrUiState.ENachSuccess -> {
                     Log.d(TAG, "ViewModel state: ENachSuccess - NACH processed")
+                    hideProgress()
                     Toast.makeText(this, "✅ E-NACH processed successfully!", Toast.LENGTH_LONG).show()
                     val nachInfo = """
                         ✅ E-NACH OCR SUCCESS:
@@ -337,11 +361,13 @@ class MainActivityCamera : AppCompatActivity() {
                 }
                 is MainViewModel.OcrUiState.CrossValidationSuccess -> {
                     Log.d(TAG, "ViewModel state: CrossValidationSuccess - Both documents processed")
+                    hideProgress()
                     Toast.makeText(this, "✅ Cross-validation completed!", Toast.LENGTH_LONG).show()
                     resultInfo.text = "✅ Cross-validation completed successfully!"
                 }
                 is MainViewModel.OcrUiState.Error -> {
                     Log.e(TAG, "ViewModel state: Error - ${state.message}")
+                    hideProgress()
                     Toast.makeText(this, "❌ OCR Error: ${state.message}", Toast.LENGTH_LONG).show()
                     resultInfo.text = "❌ ERROR: ${state.message}\n\nCheck logs for detailed debugging info."
                 }
