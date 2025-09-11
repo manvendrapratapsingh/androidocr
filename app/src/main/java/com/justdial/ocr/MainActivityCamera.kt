@@ -317,10 +317,10 @@ class  MainActivityCamera : AppCompatActivity() {
                                 }
                                 append("\nSignatures Match: $consistency")
                                 append("\nMatch Score: ${state.chequeData.signaturesMatchScore}%")
-                                
-                                if (state.chequeData.signaturesNotes.isNotEmpty()) {
-                                    append("\nNotes: ${state.chequeData.signaturesNotes}")
-                                }
+
+                            }
+                            if (state.chequeData.signaturesNotes.isNotEmpty()) {
+                                append("\nNotes: ${state.chequeData.signaturesNotes}")
                             }
                         }
                     }
