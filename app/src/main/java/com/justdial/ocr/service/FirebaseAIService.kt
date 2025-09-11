@@ -143,7 +143,8 @@ class FirebaseAIService {
             
             Log.d(TAG, "=== Firebase AI Processing Success ===")
             Log.d(TAG, "Response length: ${text.length} characters")
-            Log.d(TAG, "Extracted text: $text")
+            Log.d(TAG, "RAW AI RESPONSE: $text")
+            Log.d(TAG, "=====================================")
             
             text
         } catch (e: Exception) {
@@ -208,6 +209,9 @@ class FirebaseAIService {
     private fun parseJsonToChequeData(jsonString: String): ChequeOCRData {
         try {
             val cleanJson = extractJsonFromResponse(jsonString)
+            Log.d(TAG, "=== JSON PARSING DEBUG ===")
+            Log.d(TAG, "CLEANED JSON: $cleanJson")
+            Log.d(TAG, "=========================")
             val jsonObject = org.json.JSONObject(cleanJson)
             
             // Parse fraud indicators array if present
@@ -217,6 +221,73 @@ class FirebaseAIService {
                 for (i in 0 until fraudIndicatorsArray.length()) {
                     val reason = fraudIndicatorsArray.optString(i)
                     if (!reason.isNullOrBlank()) fraudIndicatorsList.add(reason)
+                }
+            }
+
+            // Parse signatures_consistent field (can be true, false, or null)
+            val signaturesConsistentStr = jsonObject.optString("signatures_consistent", "null")
+            val signaturesConsistent = when (signaturesConsistentStr) {
+                "true" -> true
+                "false" -> false
+                else -> null  // handles "null" and any other values
+            }
+
+            // Parse signature regions array
+            val signatureRegionsArray = jsonObject.optJSONArray("signature_regions")
+            val signatureRegionsList = mutableListOf<com.justdial.ocr.model.SignatureRegion>()
+            if (signatureRegionsArray != null) {
+                for (i in 0 until signatureRegionsArray.length()) {
+                    val regionObj = signatureRegionsArray.optJSONObject(i)
+                    if (regionObj != null) {
+                        val bboxObj = regionObj.optJSONObject("bbox")
+                        val bbox = if (bboxObj != null) {
+                            com.justdial.ocr.model.BoundingBox(
+                                x = bboxObj.optDouble("x", 0.0).toFloat(),
+                                y = bboxObj.optDouble("y", 0.0).toFloat(),
+                                w = bboxObj.optDouble("w", 0.0).toFloat(),
+                                h = bboxObj.optDouble("h", 0.0).toFloat()
+                            )
+                        } else {
+                            com.justdial.ocr.model.BoundingBox()
+                        }
+                        
+                        val groupStr = regionObj.optString("group", "unknown").lowercase()
+                        val group = when (groupStr) {
+                            "payer" -> com.justdial.ocr.model.SignatureGroup.PAYER
+                            "sponsor" -> com.justdial.ocr.model.SignatureGroup.SPONSOR
+                            else -> com.justdial.ocr.model.SignatureGroup.UNKNOWN
+                        }
+                        
+                        signatureRegionsList.add(
+                            com.justdial.ocr.model.SignatureRegion(
+                                bbox = bbox,
+                                group = group,
+                                anchorText = regionObj.optString("anchor_text", ""),
+                                evidence = regionObj.optString("evidence", "")
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Parse expected signatures object
+            val expectedSigsObj = jsonObject.optJSONObject("expected_signatures")
+            val expectedSignatures = if (expectedSigsObj != null) {
+                com.justdial.ocr.model.ExpectedSignatures(
+                    payer = expectedSigsObj.optInt("payer", 0),
+                    sponsor = expectedSigsObj.optInt("sponsor", 0)
+                )
+            } else {
+                com.justdial.ocr.model.ExpectedSignatures()
+            }
+
+            // Parse missing expected signatures array
+            val missingExpectedArray = jsonObject.optJSONArray("missing_expected_signatures")
+            val missingExpectedList = mutableListOf<String>()
+            if (missingExpectedArray != null) {
+                for (i in 0 until missingExpectedArray.length()) {
+                    val missing = missingExpectedArray.optString(i)
+                    if (!missing.isNullOrBlank()) missingExpectedList.add(missing)
                 }
             }
 
@@ -236,7 +307,19 @@ class FirebaseAIService {
                 document_quality = jsonObject.optString("document_quality", ""),
                 document_type = jsonObject.optString("document_type", ""),
                 authorizationPresent = jsonObject.optString("authorizationPresent", "false").toBoolean(),
-                fraudIndicators = fraudIndicatorsList
+                fraudIndicators = fraudIndicatorsList,
+                // Enhanced signature verification fields
+                rotationApplied = jsonObject.optInt("rotation_applied", 0),
+                signatureCount = jsonObject.optInt("signature_count", 0),
+                signaturesConsistent = signaturesConsistent,
+                signaturesMatchScore = jsonObject.optInt("signatures_match_score", 0),
+                signaturesNotes = jsonObject.optString("signatures_notes", ""),
+                signatureRegions = signatureRegionsList,
+                signatureCountPayer = jsonObject.optInt("signature_count_payer", 0),
+                signatureCountSponsor = jsonObject.optInt("signature_count_sponsor", 0),
+                signatureCountUnknown = jsonObject.optInt("signature_count_unknown", 0),
+                expectedSignatures = expectedSignatures,
+                missingExpectedSignatures = missingExpectedList
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse cheque JSON", e)

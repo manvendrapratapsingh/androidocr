@@ -131,33 +131,333 @@ class DocumentProcessorService {
         }
     }
 
-    // Prompts and parsing functions remain the same...
-
     private fun createChequePrompt(): String {
         return """
-        You are an expert OCR system for Indian bank cheques and Indian e-NACH forms. Extract ONLY the requested fields in valid JSON.
-        CRITICAL INSTRUCTION: The "account_holder_name" MUST be the printed name of the account owner on the cheque, NOT the handwritten "Pay To" name. For company cheques, this is usually printed near the signature line or below the amount.
-        {
-            "account_holder_name": "printed owner name (not payee)",
-            "bank_name": "Bank name",
-            "account_number": "Account number",
-            "ifsc_code": "IFSC code",
-            "micr_code": "MICR code",
-            "signature_present": true/false,
-            "document_quality": "good/poor/blurry/glare/cropped",
-            "document_type": "original/photocopy/handwritten/printed",
-            "fraud_indicators": ["array of visible issues or empty"]
-        }
-        Rules:
-        1. Return ONLY valid JSON. No extra text.
-        2. Prioritize the printed "account_holder_name"; never return the handwritten payee.
-        3. Populate "fraud_indicators" with visible reasons if the cheque looks handwritten/forged/fake. Examples: no MICR band; no bank logo/watermark; layout inconsistent with Indian cheques; MICR line missing/wrong font/length; IFSC/MICR/bank mismatch; overwrites/erasures in pre-printed areas; entire cheque appears handwritten on plain paper; signature looks copy-pasted.
-        4. If no issues are visible, set "fraud_indicators": [].
-        5. Be conservative and cite only what is visible in the image.
-        6. The "account_holder_name" is the most important field. Find the printed name of the company or individual who owns the account. Do NOT extract the handwritten name in the 'Pay To' line.
-       
-        """
+You are an expert OCR system for Indian bank cheques and Indian e-NACH forms. You are also an expert signature detection system for Indian e-NACH forms and cheques. Extract ONLY the requested fields in valid JSON.
+
+CRITICAL INSTRUCTION: The "account_holder_name" MUST be the printed name of the account owner on the cheque, NOT the handwritten "Pay To" name. For company cheques, this is usually printed near the signature line or below the amount.
+
+OUTPUT SCHEMA (return ONLY this JSON; no extra text):
+{
+  "account_holder_name": "",
+  "bank_name": "",
+  "account_number": "",
+  "ifsc_code": "",
+  "micr_code": "",
+  "signature_present": false,
+  "document_quality": "good",
+  "document_type": "printed",
+  "fraud_indicators": [],
+
+  "rotation_applied": 0,
+
+  "signature_count": 0,
+  "signatures_consistent": null,
+  "signatures_match_score": 0,
+  "signatures_notes": "",
+
+  // Each detected handwritten signature must have one entry here.
+  // bbox values are normalized to the full (rotation-corrected) image in [0..1].
+  "signature_regions": [
+    {
+      "bbox": {"x":0.0,"y":0.0,"w":0.0,"h":0.0},
+      "group": "unknown",              // one of: payer | sponsor | unknown
+      "anchor_text": "",               // nearest printed text like "For <Company>", "PARTNER", "Authorised Signatory", "JUSTDIAL LIMITED"
+      "evidence": ""                   // short note: "cursive above PARTNER (left)", "partial due to crop", etc.
     }
+  ],
+
+  // Per-group counts for reliability when forms have two signers each side
+  "signature_count_payer": 0,
+  "signature_count_sponsor": 0,
+  "signature_count_unknown": 0,
+
+  // Optional expectations if anchors imply multiple signers
+  "expected_signatures": {"payer": 0, "sponsor": 0},
+  "missing_expected_signatures": []
+}
+
+Rules:
+1) Return ONLY valid JSON exactly matching the schema above. Use "" (empty string) or [] when unreadable/unknown.
+2) Prioritize the printed "account_holder_name"; never return the handwritten payee.
+3) "fraud_indicators" only for visible issues (e.g., no MICR band; no bank logo/watermark; layout inconsistent; MICR line missing/wrong font/length; IFSC/MICR/bank mismatch; overwrites/erasures in pre-printed areas; entire cheque appears handwritten on plain paper; signature looks copy-pasted). If none, use [].
+4) Be conservative and cite only what is visible.
+
+CRITICAL: CANCELLED CHEQUE DETECTION
+5) NEVER treat "CANCELLED", "CANCEL", "VOID", or similar text as signatures, even if handwritten.
+6) If you detect "CANCELLED" or "CANCEL" text on the cheque:
+   - Do NOT include it in signature_regions
+   - Do NOT count it as a signature
+   - Add "cheque marked cancelled" to fraud_indicators
+   - Add note in signatures_notes: "Cheque is marked as CANCELLED - cancel text ignored for signature detection"
+7) Only count actual personal name signatures as valid signatures.
+
+ORIENTATION & SWEEP:
+8) Normalize orientation so the form reads horizontally; set "rotation_applied" to 0/90/180/270.
+9) Scan the entire image edge-to-edge, with EXTRA attention to the bottom strip where multiple "For <Company>" + "PARTNER/Authorised Signatory" lines appear. Re-check the extreme left and right edges before finalizing.
+
+CRITICAL SIGNATURE DETECTION FOR E-NACH:
+10) MANDATORY: You MUST find exactly 4 handwritten signatures in this e-NACH form. They are located at:
+   Position 1 (Left): Above "For SHAREHOLDER AND SERVICES" - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT
+   Position 2 (Left-Center): Above first "PARTNER" label - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT  
+   Position 3 (Right-Center): Above second "PARTNER" label - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT
+   Position 4 (Right): Above third "PARTNER" label - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT
+
+11) SIGNATURE IDENTIFICATION:
+   - Signatures are HANDWRITTEN CURSIVE text above the printed labels
+   - They look like flowing, connected handwriting (not printed block letters)
+   - Each signature is a person's name written in cursive/script style
+   - Ignore the printed text below - only look for handwriting ABOVE each label
+   - EXCLUDE any text that says "CANCELLED", "CANCEL", "VOID" - these are NOT signatures
+
+12) SCAN METHOD - Check these 4 locations in order:
+   a) Look ABOVE "For SHAREHOLDER AND SERVICES" text → Record signature found here
+   b) Look ABOVE first "PARTNER" text → Record signature found here  
+   c) Look ABOVE second "PARTNER" text → Record signature found here
+   d) Look ABOVE third "PARTNER" text → Record signature found here
+
+13) FOR EACH OF THE 4 SIGNATURES:
+    - Add entry to "signature_regions" array
+    - Set bbox to approximate location (left signatures x<0.5, right signatures x>0.5)
+    - Set "anchor_text" to the printed text below (e.g., "PARTNER", "For SHAREHOLDER AND SERVICES")
+    - Set "evidence" to describe location (e.g., "handwritten signature above leftmost PARTNER")
+    - Set "group" to "payer" for customer signatures
+
+14) VALIDATION: signature_count MUST equal 4 for e-NACH forms. If you find fewer, look again more carefully.
+
+GROUPING (payer vs sponsor/receiver):
+15) For each signature box, set "group":
+   - "payer" if the nearest anchor text includes the account holder name or phrases like "For <ACCOUNT HOLDER>", "Partner", "Authorised Signatory" (without "JUSTDIAL"/sponsor nearby).
+   - "sponsor" if the nearest anchor text includes the sponsor/originator (e.g., "JUSTDIAL LIMITED", "Sponsor", "Utility Code" region's sign line).
+   - "unknown" if anchors are unclear.
+
+16) Set per-group counts and totals:
+   - "signature_count_payer", "signature_count_sponsor", "signature_count_unknown"
+   - "signature_count" = signature_regions.length 
+   - "signature_present" = (signature_count ≥ 1)
+
+EXPECTATION HEURISTICS (common on NACH forms):
+17) If you see multiple "PARTNER" labels and "For [Company]" areas, expect multiple signatures.
+18) For e-NACH forms with 3+ "PARTNER" labels, expect 4 signatures total.
+19) If you find fewer signatures than expected, re-scan more carefully.
+
+MULTI-SIGNATURE VERIFICATION:
+20) If signature_count ≤ 1:
+    - "signatures_consistent": null, "signatures_match_score": 0, "signatures_notes": ""
+21) If signature_count ≥ 2:
+    - Compare handwriting style, slant, loops, baseline, stroke patterns
+    - Score 0–100: 90-100=very likely same, 75-89=likely same, 60-74=unclear, <60=different
+    - "signatures_consistent" = true if ≥75, false if <60, null if unclear
+    - Brief notes about comparison
+
+QUALITY & FRAUD:
+22) Only mark fraud if there are tampering signs. Pure blur/glare is NOT fraud.
+23) If cheque is marked "CANCELLED" or "CANCEL", add "cheque marked cancelled" to fraud_indicators.
+
+FINAL VALIDATIONS:
+24) "signature_count" MUST equal signature_regions.length.
+25) Double-check you found ALL signatures before returning - e-NACH forms typically have 4!
+26) Ensure "CANCELLED" text is never counted as a signature.
+
+EDGE CASES:
+27) If no MICR band visible, set "micr_code": "" and add "no MICR band" to "fraud_indicators".
+28) If IFSC/MICR unreadable, leave "" rather than guessing.
+29) If printed account holder name not visible, set "account_holder_name": "" (do NOT use handwritten names).
+30) If "CANCELLED" is written on cheque, mention this in signatures_notes and fraud_indicators but do not count as signature.
+
+Return ONLY the JSON object.
+""".trimIndent()
+    }
+
+    // Prompts and parsing functions remain the same...
+    /*private fun createChequePrompt(): String {
+        return """
+You are an expert OCR system for Indian bank cheques and Indian e-NACH forms. You are also an expert signature detection system for Indian e-NACH forms and cheques. Extract ONLY the requested fields in valid JSON.
+
+CRITICAL INSTRUCTION: The "account_holder_name" MUST be the printed name of the account owner on the cheque, NOT the handwritten "Pay To" name. For company cheques, this is usually printed near the signature line or below the amount.
+
+OUTPUT SCHEMA (return ONLY this JSON; no extra text):
+{
+  "account_holder_name": "",
+  "bank_name": "",
+  "account_number": "",
+  "ifsc_code": "",
+  "micr_code": "",
+  "signature_present": false,
+  "document_quality": "good",
+  "document_type": "printed",
+  "fraud_indicators": [],
+
+  "rotation_applied": 0,
+
+  "signature_count": 0,
+  "signatures_consistent": null,
+  "signatures_match_score": 0,
+  "signatures_notes": "",
+
+  // Each detected handwritten signature must have one entry here.
+  // bbox values are normalized to the full (rotation-corrected) image in [0..1].
+  "signature_regions": [
+    {
+      "bbox": {"x":0.0,"y":0.0,"w":0.0,"h":0.0},
+      "group": "unknown",              // one of: payer | sponsor | unknown
+      "anchor_text": "",               // nearest printed text like "For <Company>", "PARTNER", "Authorised Signatory", "JUSTDIAL LIMITED"
+      "evidence": ""                   // short note: "cursive above PARTNER (left)", "partial due to crop", etc.
+    }
+  ],
+
+  // Per-group counts for reliability when forms have two signers each side
+  "signature_count_payer": 0,
+  "signature_count_sponsor": 0,
+  "signature_count_unknown": 0,
+
+  // Optional expectations if anchors imply multiple signers
+  "expected_signatures": {"payer": 0, "sponsor": 0},
+  "missing_expected_signatures": []
+}
+
+Rules:
+1) Return ONLY valid JSON exactly matching the schema above. Use "" (empty string) or [] when unreadable/unknown.
+2) Prioritize the printed "account_holder_name"; never return the handwritten payee.
+3) "fraud_indicators" only for visible issues (e.g., no MICR band; no bank logo/watermark; layout inconsistent; MICR line missing/wrong font/length; IFSC/MICR/bank mismatch; overwrites/erasures in pre-printed areas; entire cheque appears handwritten on plain paper; signature looks copy-pasted). If none, use [].
+4) Be conservative and cite only what is visible.
+
+ORIENTATION & SWEEP:
+5) Normalize orientation so the form reads horizontally; set "rotation_applied" to 0/90/180/270.
+6) Scan the entire image edge-to-edge, with EXTRA attention to the bottom strip where multiple "For <Company>" + "PARTNER/Authorised Signatory" lines appear. Re-check the extreme left and right edges before finalizing.
+
+CRITICAL SIGNATURE DETECTION FOR E-NACH:
+7) MANDATORY: You MUST find exactly 4 handwritten signatures in this e-NACH form. They are located at:
+   Position 1 (Left): Above "For SHAREHOLDER AND SERVICES" - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT
+   Position 2 (Left-Center): Above first "PARTNER" label - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT  
+   Position 3 (Right-Center): Above second "PARTNER" label - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT
+   Position 4 (Right): Above third "PARTNER" label - LOOK FOR CURSIVE HANDWRITING ABOVE THIS TEXT
+
+8) SIGNATURE IDENTIFICATION:
+   - Signatures are HANDWRITTEN CURSIVE text above the printed labels
+   - They look like flowing, connected handwriting (not printed block letters)
+   - Each signature is a person's name written in cursive/script style
+   - Ignore the printed text below - only look for handwriting ABOVE each label
+
+9) SCAN METHOD - Check these 4 locations in order:
+   a) Look ABOVE "For SHAREHOLDER AND SERVICES" text → Record signature found here
+   b) Look ABOVE first "PARTNER" text → Record signature found here  
+   c) Look ABOVE second "PARTNER" text → Record signature found here
+   d) Look ABOVE third "PARTNER" text → Record signature found here
+
+10) FOR EACH OF THE 4 SIGNATURES:
+    - Add entry to "signature_regions" array
+    - Set bbox to approximate location (left signatures x<0.5, right signatures x>0.5)
+    - Set "anchor_text" to the printed text below (e.g., "PARTNER", "For SHAREHOLDER AND SERVICES")
+    - Set "evidence" to describe location (e.g., "handwritten signature above leftmost PARTNER")
+    - Set "group" to "payer" for customer signatures
+
+11) VALIDATION: signature_count MUST equal 4 for e-NACH forms. If you find fewer, look again more carefully.
+
+GROUPING (payer vs sponsor/receiver):
+11) For each signature box, set "group":
+   - "payer" if the nearest anchor text includes the account holder name or phrases like "For <ACCOUNT HOLDER>", "Partner", "Authorised Signatory" (without "JUSTDIAL"/sponsor nearby).
+   - "sponsor" if the nearest anchor text includes the sponsor/originator (e.g., "JUSTDIAL LIMITED", "Sponsor", "Utility Code" region's sign line).
+   - "unknown" if anchors are unclear.
+
+12) Set per-group counts and totals:
+   - "signature_count_payer", "signature_count_sponsor", "signature_count_unknown"
+   - "signature_count" = signature_regions.length 
+   - "signature_present" = (signature_count ≥ 1)
+
+EXPECTATION HEURISTICS (common on NACH forms):
+13) If you see multiple "PARTNER" labels and "For [Company]" areas, expect multiple signatures.
+14) For e-NACH forms with 3+ "PARTNER" labels, expect 4 signatures total.
+15) If you find fewer signatures than expected, re-scan more carefully.
+
+MULTI-SIGNATURE VERIFICATION:
+16) If signature_count ≤ 1:
+    - "signatures_consistent": null, "signatures_match_score": 0, "signatures_notes": ""
+17) If signature_count ≥ 2:
+    - Compare handwriting style, slant, loops, baseline, stroke patterns
+    - Score 0–100: 90-100=very likely same, 75-89=likely same, 60-74=unclear, <60=different
+    - "signatures_consistent" = true if ≥75, false if <60, null if unclear
+    - Brief notes about comparison
+
+QUALITY & FRAUD:
+18) Only mark fraud if there are tampering signs. Pure blur/glare is NOT fraud.
+
+FINAL VALIDATIONS:
+19) "signature_count" MUST equal signature_regions.length.
+20) Double-check you found ALL signatures before returning - e-NACH forms typically have 4!
+
+EDGE CASES:
+21) If no MICR band visible, set "micr_code": "" and add "no MICR band" to "fraud_indicators".
+22) If IFSC/MICR unreadable, leave "" rather than guessing.
+23) If printed account holder name not visible, set "account_holder_name": "" (do NOT use handwritten names).
+
+Return ONLY the JSON object.
+""".trimIndent()
+    }*/
+
+
+    /* private fun createChequePrompt(): String {
+         return """
+         You are an expert OCR system for Indian bank cheques and Indian e-NACH forms. Extract ONLY the requested fields in valid JSON.
+
+         CRITICAL INSTRUCTION: The "account_holder_name" MUST be the printed name of the account owner on the cheque, NOT the handwritten "Pay To" name. For company cheques, this is usually printed near the signature line or below the amount.
+
+         OUTPUT SCHEMA (return ONLY this JSON; no extra text):
+         {
+           "account_holder_name": "printed owner name (not payee)",
+           "bank_name": "Bank name",
+           "account_number": "Account number",
+           "ifsc_code": "IFSC code",
+           "micr_code": "MICR code",
+           "signature_present": true/false,
+           "document_quality": "good/poor/blurry/glare/cropped",
+           "document_type": "original/photocopy/handwritten/printed",
+           "fraud_indicators": ["array of visible issues or empty"],
+
+           // NEW: multi-signature verification
+           "signature_count": 0,
+           "signatures_consistent": true/false/null,
+           "signatures_match_score": 0,
+           "signatures_notes": "short reason if mismatch/unclear, else empty"
+         }
+
+         Rules:
+         1) Return ONLY valid JSON exactly matching the schema above. No extra keys or text.
+         2) Prioritize the printed "account_holder_name"; never return the handwritten payee.
+         3) Populate "fraud_indicators" with visible reasons if the cheque looks handwritten/forged/fake. Examples: no MICR band; no bank logo/watermark; layout inconsistent with Indian cheques; MICR line missing/wrong font/length; IFSC/MICR/bank mismatch; overwrites/erasures in pre-printed areas; entire cheque appears handwritten on plain paper; signature looks copy-pasted. If no issues are visible, set "fraud_indicators": [].
+         4) Be conservative and cite only what is visible in the image.
+
+         Signature handling (VERY IMPORTANT):
+         5) Set "signature_present" = true if at least one handwritten signature is visible anywhere on the cheque (including "Authorised Signatory" area). Ignore printed/stamped text and background watermarks.
+         6) Count distinct handwritten signatures you can see on the instrument and set "signature_count".
+         7) If signature_count ≤ 1:
+            - "signatures_consistent": null
+            - "signatures_match_score": 0
+            - "signatures_notes": "" (empty)
+         8) If signature_count ≥ 2, verify whether all visible handwritten signatures are from the SAME signer:
+            - Compare overall shape, stroke order cues, slant, loop and hook shapes, baseline alignment, unique glyphs in the name, pen pressure patterns, and connecting strokes.
+            - Ignore stamps ("for XYZ"), "A/c Payee", seals, and printed authorisation text. Compare only handwritten signatures.
+            - Compute a single overall % match across the set (0–100). Suggested interpretation:
+                90–100 = Very likely same signer
+                75–89  = Likely same signer (minor variation)
+                60–74  = Unclear/low confidence
+                <60    = Likely different signers
+            - Set:
+                • "signatures_consistent" = true if overall score ≥ 75 and no pair is clearly divergent
+                • "signatures_consistent" = false if any pair appears different (overall score < 60) or there are strong inconsistencies (different names/scripts)
+                • "signatures_consistent" = null if image quality prevents reliable judgement (blur/glare/crop)
+            - Place the numeric overall score in "signatures_match_score" (integer 0–100).
+            - Briefly explain in "signatures_notes" (e.g., "two signatures; matching loops on 'h' and baseline; minor slant change", or "mismatch: different surname letters; one Devanagari, one Latin", or "unclear due to blur/glare").
+         9) If quality issues impede signature comparison, reflect that in "document_quality" and add a relevant item to "fraud_indicators" only if it suggests tampering (e.g., copy-pasted signature artifacts). Pure blur/glare without tampering signs should NOT be marked as fraud.
+
+         Edge cases:
+         10) If no MICR line is visible, set "micr_code": "" and add "no MICR band" to "fraud_indicators" only if the instrument purports to be a standard Indian cheque.
+         11) If IFSC/MICR cannot be read, leave the field "" (empty string) rather than guessing.
+         12) If the account holder's printed name is not visible, set "account_holder_name": "" and DO NOT use the handwritten payee.
+
+         Return ONLY the JSON object.
+         """
+     }*/
 
     private fun createENachPrompt(): String {
         return """

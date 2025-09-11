@@ -20,6 +20,18 @@ data class ChequeOCRData(
     val document_quality: String="",
     val document_type: String="",
     val fraudIndicators: List<String> = emptyList(),
+    // Enhanced signature verification fields
+    val rotationApplied: Int = 0,
+    val signatureCount: Int = 0,
+    val signaturesConsistent: Boolean? = null,
+    val signaturesMatchScore: Int = 0,
+    val signaturesNotes: String = "",
+    val signatureRegions: List<SignatureRegion> = emptyList(),
+    val signatureCountPayer: Int = 0,
+    val signatureCountSponsor: Int = 0,
+    val signatureCountUnknown: Int = 0,
+    val expectedSignatures: ExpectedSignatures = ExpectedSignatures(),
+    val missingExpectedSignatures: List<String> = emptyList(),
     // Quality and confidence metrics
     val processingConfidence: Float = 0.0f,
     val imageQuality: String = "",
@@ -65,3 +77,32 @@ enum class WarningType {
     PARTIAL_OCCLUSION,
     UNUSUAL_FORMAT
 }
+
+@Serializable
+data class SignatureRegion(
+    val bbox: BoundingBox,
+    val group: SignatureGroup = SignatureGroup.UNKNOWN,
+    val anchorText: String = "",
+    val evidence: String = ""
+)
+
+@Serializable
+data class BoundingBox(
+    val x: Float = 0.0f,
+    val y: Float = 0.0f,
+    val w: Float = 0.0f,
+    val h: Float = 0.0f
+)
+
+@Serializable
+enum class SignatureGroup {
+    PAYER,
+    SPONSOR,
+    UNKNOWN
+}
+
+@Serializable
+data class ExpectedSignatures(
+    val payer: Int = 0,
+    val sponsor: Int = 0
+)

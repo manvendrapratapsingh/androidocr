@@ -236,6 +236,72 @@ class MainActivityCamera : AppCompatActivity() {
                         prefix = "\n  - "
                     )
 
+                    // Format enhanced signature verification information
+                    val signatureInfo = buildString {
+                        append("Signature Present: ${if (state.chequeData.signaturePresent) "Yes" else "No"}")
+                        
+                        if (state.chequeData.rotationApplied != 0) {
+                            append("\nRotation Applied: ${state.chequeData.rotationApplied}°")
+                        }
+                        
+                        if (state.chequeData.signatureCount > 0) {
+                            append("\nTotal Signatures: ${state.chequeData.signatureCount}")
+                            
+                            // Show signature breakdown by group
+                            val groupCounts = mutableListOf<String>()
+                            if (state.chequeData.signatureCountPayer > 0) {
+                                groupCounts.add("Payer: ${state.chequeData.signatureCountPayer}")
+                            }
+                            if (state.chequeData.signatureCountSponsor > 0) {
+                                groupCounts.add("Sponsor: ${state.chequeData.signatureCountSponsor}")
+                            }
+                            if (state.chequeData.signatureCountUnknown > 0) {
+                                groupCounts.add("Unknown: ${state.chequeData.signatureCountUnknown}")
+                            }
+                            if (groupCounts.isNotEmpty()) {
+                                append("\nBreakdown: ${groupCounts.joinToString(", ")}")
+                            }
+                            
+                            // Show signature regions details
+                            if (state.chequeData.signatureRegions.isNotEmpty()) {
+                                append("\nSignature Regions:")
+                                state.chequeData.signatureRegions.forEachIndexed { index, region ->
+                                    append("\n  ${index + 1}. ${region.group.name.lowercase().replaceFirstChar { it.uppercase() }}")
+                                    if (region.anchorText.isNotEmpty()) {
+                                        append(" (${region.anchorText})")
+                                    }
+                                    if (region.evidence.isNotEmpty()) {
+                                        append(" - ${region.evidence}")
+                                    }
+                                }
+                            }
+                            
+                            // Show expectations and missing signatures
+                            if (state.chequeData.expectedSignatures.payer > 0 || state.chequeData.expectedSignatures.sponsor > 0) {
+                                append("\nExpected: Payer(${state.chequeData.expectedSignatures.payer}) Sponsor(${state.chequeData.expectedSignatures.sponsor})")
+                            }
+                            
+                            if (state.chequeData.missingExpectedSignatures.isNotEmpty()) {
+                                append("\nMissing: ${state.chequeData.missingExpectedSignatures.joinToString(", ")}")
+                            }
+                            
+                            // Multi-signature consistency analysis
+                            if (state.chequeData.signatureCount >= 2) {
+                                val consistency = when (state.chequeData.signaturesConsistent) {
+                                    true -> "✅ Consistent"
+                                    false -> "❌ Inconsistent"
+                                    null -> "❓ Unclear"
+                                }
+                                append("\nSignatures Match: $consistency")
+                                append("\nMatch Score: ${state.chequeData.signaturesMatchScore}%")
+                                
+                                if (state.chequeData.signaturesNotes.isNotEmpty()) {
+                                    append("\nNotes: ${state.chequeData.signaturesNotes}")
+                                }
+                            }
+                        }
+                    }
+
                     val chequeInfo = """
                         ✅ CHEQUE OCR SUCCESS:
                         Account Holder: ${displayValue(state.chequeData.accountHolderName)}
@@ -243,18 +309,18 @@ class MainActivityCamera : AppCompatActivity() {
                         Account Number: ${displayValue(state.chequeData.accountNumber)}
                         IFSC: ${displayValue(state.chequeData.ifscCode)}
                         MICR: ${displayValue(state.chequeData.micrCode)}
-                        Signature Present: ${if (state.chequeData.signaturePresent) "Yes" else "No"}
+                        $signatureInfo
                         Document Quality: ${displayValue(state.chequeData.document_quality)}
                         Document Type: ${displayValue(state.chequeData.document_type)}
                         Fraud Indicators: $fraudText
                     """.trimIndent()
                     resultInfo.text = chequeInfo
-                    val resultIntent = Intent().apply {
+                   /* val resultIntent = Intent().apply {
                         putExtra("result_json", Json.encodeToString(state.chequeData))
                         putExtra("document_type", "cheque")
                     }
                     setResult(Activity.RESULT_OK, resultIntent)
-                    finish()
+                    finish()*/
                 }
                 is MainViewModel.OcrUiState.ENachSuccess -> {
                     Log.d(TAG, "ViewModel state: ENachSuccess - NACH processed")
