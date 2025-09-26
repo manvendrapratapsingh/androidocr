@@ -186,7 +186,7 @@ OUTPUT SCHEMA (return ONLY this JSON; no extra text):
 
 Rules:
 1) Return ONLY valid JSON exactly matching the schema above. Use "" (empty string) or [] when unreadable/unknown.
-2) Prioritize the printed "account_holder_name"; never return the handwritten payee.
+2) Prioritize the printed "account_holder_name";.
 3) "fraud_indicators" only for visible issues (e.g., no MICR band; no bank logo/watermark; layout inconsistent).
 4) Be conservative and cite only what is visible.
 
@@ -312,7 +312,7 @@ FINAL VALIDATIONS:
 EDGE CASES:
 28) If no MICR band visible, set "micr_code": "" and add "no MICR band" to "fraud_indicators"
 29) If IFSC/MICR unreadable, leave "" rather than guessing
-30) If printed account holder name not visible, set "account_holder_name": ""
+30) If printed account holder name not visible than take hand written
 31) If "CANCELLED" is written on form, mention in signatures_notes but do not count as signature
 
 CRITICAL OUTPUT REQUIREMENT:
