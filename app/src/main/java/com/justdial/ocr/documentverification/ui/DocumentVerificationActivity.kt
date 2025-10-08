@@ -14,9 +14,9 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.material.card.MaterialCardView
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
@@ -41,7 +41,8 @@ class DocumentVerificationActivity : AppCompatActivity() {
     private lateinit var btnGallery: Button
     private lateinit var btnAnalyze: Button
     private lateinit var imgPreview: ImageView
-    private lateinit var progressContainer: LinearLayout
+    private lateinit var previewCard: MaterialCardView
+    private lateinit var progressContainer: MaterialCardView
     private lateinit var progressText: TextView
     private lateinit var tvResultsTitle: TextView
     private lateinit var resultsRecyclerView: RecyclerView
@@ -71,6 +72,10 @@ class DocumentVerificationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_document_verification)
 
+        // Handle edge-to-edge display
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+
         scannerLauncher = registerForActivityResult(
             ActivityResultContracts.StartIntentSenderForResult()
         ) { result ->
@@ -89,13 +94,16 @@ class DocumentVerificationActivity : AppCompatActivity() {
         btnGallery = findViewById(R.id.btn_gallery)
         btnAnalyze = findViewById(R.id.btn_analyze)
         imgPreview = findViewById(R.id.img_preview)
-        progressContainer = findViewById(R.id.progress_container)
+        previewCard = findViewById(R.id.preview_card)
+        progressContainer = findViewById(R.id.progress_card)
         progressText = findViewById(R.id.progress_text)
         tvResultsTitle = findViewById(R.id.tv_results_title)
         resultsRecyclerView = findViewById(R.id.results_recycler_view)
     }
 
     private fun setupToolbar() {
+        val toolbar: androidx.appcompat.widget.Toolbar = findViewById(R.id.toolbar)
+        setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Document Verification"
     }
@@ -185,7 +193,7 @@ class DocumentVerificationActivity : AppCompatActivity() {
     private fun handleImageSelected(bitmap: Bitmap) {
         currentBitmap = bitmap
         imgPreview.setImageBitmap(bitmap)
-        imgPreview.visibility = View.VISIBLE
+        previewCard.visibility = View.VISIBLE
         btnAnalyze.visibility = View.VISIBLE
     }
 
@@ -222,7 +230,7 @@ class DocumentVerificationActivity : AppCompatActivity() {
                     Toast.makeText(this@DocumentVerificationActivity, statusText, Toast.LENGTH_LONG).show()
 
                     // Clear preview for next document
-                    imgPreview.visibility = View.GONE
+                    previewCard.visibility = View.GONE
                     btnAnalyze.visibility = View.GONE
                     currentBitmap = null
                 } else {

@@ -8,4 +8,8 @@
     <string name="label_enable_gallery_import" translatable="false">Enable gallery import: </string>
     <string name="label_set_page_limit" translatable="false">Set page limit per scan: </string>
     <string name="first_page_view" translatable="false">First page of the scanned document</string>
+
+    <!-- Document Verification Strings -->
+    <string name="document_preview">Document preview</string>
+    <string name="document_thumbnail">Document thumbnail</string>
 </resources>

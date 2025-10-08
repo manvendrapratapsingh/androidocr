@@ -43,7 +43,7 @@
             android:name=".documentverification.ui.DocumentVerificationActivity"
             android:exported="false"
             android:label="Document Verification"
-            android:theme="@style/Theme.JustdialOCR" />
+            android:theme="@style/Theme.JustdialOCR.NoActionBar" />
         
         <provider
             android:name="androidx.core.content.FileProvider"

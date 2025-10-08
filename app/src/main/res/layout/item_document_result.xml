@@ -1,165 +1,234 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    app:cardCornerRadius="8dp"
-    app:cardElevation="4dp">
+    android:layout_marginStart="16dp"
+    android:layout_marginEnd="16dp"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
+    app:strokeWidth="0dp">
 
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="wrap_content">
 
-        <!-- Header Row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:orientation="vertical"
+            android:padding="16dp">
 
-            <ImageView
-                android:id="@+id/img_thumbnail"
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                android:scaleType="centerCrop"
-                android:background="#E0E0E0"
-                android:contentDescription="Document thumbnail" />
-
+            <!-- Header Row with Thumbnail and Basic Info -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:orientation="vertical">
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
 
-                <TextView
-                    android:id="@+id/tv_document_type"
-                    android:layout_width="wrap_content"
+                <!-- Document Thumbnail with Rounded Corners -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="120dp"
+                    android:layout_height="80dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardElevation="2dp">
+
+                    <ImageView
+                        android:id="@+id/img_thumbnail"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        android:background="#E0E0E0"
+                        android:contentDescription="@string/document_thumbnail" />
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Document Type and Status Info -->
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="PAN Card"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="#333333" />
+                    android:layout_weight="1"
+                    android:layout_marginStart="16dp"
+                    android:orientation="vertical">
 
+                    <!-- Document Type Title -->
+                    <TextView
+                        android:id="@+id/tv_document_type"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="PAN Card"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="#000000"
+                        android:textIsSelectable="true" />
+
+                    <!-- Status Chip -->
+                    <TextView
+                        android:id="@+id/tv_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="6dp"
+                        android:text="PASS"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="#FFFFFF"
+                        android:background="@drawable/bg_status_pass"
+                        android:textIsSelectable="true" />
+
+                    <!-- Confidence -->
+                    <TextView
+                        android:id="@+id/tv_confidence"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Confidence: 95%"
+                        android:textSize="14sp"
+                        android:textColor="#666666"
+                        android:textIsSelectable="true" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
+                android:background="#E0E0E0" />
+
+            <!-- ELA Tampering Score Section -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_score_container"
+                android:padding="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="ELA Tampering Score"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="#212121" />
+
+                    <TextView
+                        android:id="@+id/tv_tampering_score"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="15"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-medium"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="4dp"
+                        android:background="@drawable/bg_score_low"
+                        android:textColor="#388E3C"
+                        android:textIsSelectable="true" />
+                </LinearLayout>
+
+                <!-- Score Legend -->
                 <TextView
-                    android:id="@+id/tv_status"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="PASS"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:textColor="#4CAF50" />
-
-                <TextView
-                    android:id="@+id/tv_confidence"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="Confidence: 95%"
-                    android:textSize="12sp"
-                    android:textColor="#666666" />
+                    android:text="≤35: Pass • 36-50: Flagged • >50: Fail"
+                    android:textSize="11sp"
+                    android:textColor="#666666"
+                    android:alpha="0.8" />
             </LinearLayout>
-        </LinearLayout>
 
-        <!-- Divider -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="12dp"
-            android:layout_marginBottom="12dp"
-            android:background="#E0E0E0" />
-
-        <!-- Tampering Score -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
+            <!-- Reason Section -->
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="ELA Tampering Score"
-                android:textSize="14sp"
-                android:textColor="#666666" />
-
-            <TextView
-                android:id="@+id/tv_tampering_score"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="15.32"
+                android:layout_marginTop="16dp"
+                android:text="Reason:"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:textColor="#FF5722" />
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#212121" />
+
+            <TextView
+                android:id="@+id/tv_reason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="Document appears authentic with all security features present"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:lineSpacingMultiplier="1.3"
+                android:textIsSelectable="true" />
+
+            <!-- Fraud Indicators Section -->
+            <LinearLayout
+                android:id="@+id/fraud_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_fraud_section"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Fraud Indicators:"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#D32F2F" />
+
+                <LinearLayout
+                    android:id="@+id/fraud_indicators_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="8dp" />
+            </LinearLayout>
+
+            <!-- No Fraud Indicators Message -->
+            <LinearLayout
+                android:id="@+id/no_fraud_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_success_section"
+                android:padding="12dp"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="✓ No fraud indicators detected"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="#388E3C" />
+            </LinearLayout>
+
         </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
-        <!-- Reason -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Reason:"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="#333333" />
-
-        <TextView
-            android:id="@+id/tv_reason"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Document appears authentic with all security features present"
-            android:textSize="13sp"
-            android:textColor="#666666" />
-
-        <!-- Fraud Indicators -->
-        <TextView
-            android:id="@+id/tv_fraud_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Fraud Indicators:"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="#D32F2F"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/tv_fraud_indicators"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textSize="13sp"
-            android:textColor="#D32F2F"
-            android:visibility="gone" />
-
-        <!-- Extracted Fields -->
-        <TextView
-            android:id="@+id/tv_fields_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Extracted Data:"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="#333333"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/tv_extracted_fields"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textSize="12sp"
-            android:textColor="#666666"
-            android:fontFamily="monospace"
-            android:visibility="gone" />
-
-    </LinearLayout>
-
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

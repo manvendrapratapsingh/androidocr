@@ -5,7 +5,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.justdial.ocr.R
 import com.justdial.ocr.documentverification.model.DocumentAnalysisResult
@@ -46,12 +48,13 @@ class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultV
         private val tvConfidence: TextView = itemView.findViewById(R.id.tv_confidence)
         private val tvTamperingScore: TextView = itemView.findViewById(R.id.tv_tampering_score)
         private val tvReason: TextView = itemView.findViewById(R.id.tv_reason)
-        private val tvFraudTitle: TextView = itemView.findViewById(R.id.tv_fraud_title)
-        private val tvFraudIndicators: TextView = itemView.findViewById(R.id.tv_fraud_indicators)
-        private val tvFieldsTitle: TextView = itemView.findViewById(R.id.tv_fields_title)
-        private val tvExtractedFields: TextView = itemView.findViewById(R.id.tv_extracted_fields)
+        private val fraudSection: LinearLayout = itemView.findViewById(R.id.fraud_section)
+        private val fraudIndicatorsContainer: LinearLayout = itemView.findViewById(R.id.fraud_indicators_container)
+        private val noFraudSection: LinearLayout = itemView.findViewById(R.id.no_fraud_section)
 
         fun bind(result: DocumentAnalysisResult, bitmap: Bitmap?) {
+            val context = itemView.context
+
             // Set thumbnail
             if (bitmap != null) {
                 imgThumbnail.setImageBitmap(bitmap)
@@ -60,42 +63,56 @@ class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultV
             // Document type
             tvDocumentType.text = formatDocumentType(result.documentType)
 
-            // Status with color
+            // Status with color-coded chip background
             tvStatus.text = result.prediction.name
-            tvStatus.setTextColor(getStatusColor(result.prediction))
+            val statusBackground = when (result.prediction) {
+                DocumentStatus.PASS -> R.drawable.bg_status_pass
+                DocumentStatus.FLAGGED -> R.drawable.bg_status_flagged
+                DocumentStatus.FAIL -> R.drawable.bg_status_fail
+            }
+            tvStatus.setBackgroundResource(statusBackground)
 
             // Confidence
             val confidencePercent = (result.confidence * 100).toInt()
             tvConfidence.text = "Confidence: $confidencePercent%"
 
-            // Tampering score with color
-            tvTamperingScore.text = String.format("%.2f", result.elaTamperingScore)
-            tvTamperingScore.setTextColor(getTamperingScoreColor(result.elaTamperingScore))
+            // Tampering score with dynamic background and color
+            val scoreInt = result.elaTamperingScore.toInt()
+            tvTamperingScore.text = scoreInt.toString()
+
+            val (scoreBackground, scoreColor) = when {
+                result.elaTamperingScore <= 35 -> Pair(R.drawable.bg_score_low, 0xFF388E3C.toInt())
+                result.elaTamperingScore <= 50 -> Pair(R.drawable.bg_score_medium, 0xFFF57C00.toInt())
+                else -> Pair(R.drawable.bg_score_high, 0xFFD32F2F.toInt())
+            }
+            tvTamperingScore.setBackgroundResource(scoreBackground)
+            tvTamperingScore.setTextColor(scoreColor)
 
             // Reason
             tvReason.text = result.reason
 
-            // Fraud indicators
+            // Fraud indicators with bullet points
             if (result.fraudIndicators.isNotEmpty()) {
-                tvFraudTitle.visibility = View.VISIBLE
-                tvFraudIndicators.visibility = View.VISIBLE
-                tvFraudIndicators.text = result.fraudIndicators.joinToString("\n• ", prefix = "• ")
-            } else {
-                tvFraudTitle.visibility = View.GONE
-                tvFraudIndicators.visibility = View.GONE
-            }
+                fraudSection.visibility = View.VISIBLE
+                noFraudSection.visibility = View.GONE
 
-            // Extracted fields
-            if (result.extractedFields.isNotEmpty()) {
-                tvFieldsTitle.visibility = View.VISIBLE
-                tvExtractedFields.visibility = View.VISIBLE
-                val fieldsText = result.extractedFields.entries.joinToString("\n") { (key, value) ->
-                    "${formatFieldName(key)}: $value"
+                // Clear previous indicators
+                fraudIndicatorsContainer.removeAllViews()
+
+                // Add each fraud indicator as a separate TextView with bullet
+                result.fraudIndicators.forEach { indicator ->
+                    val indicatorView = TextView(context).apply {
+                        text = "• $indicator"
+                        textSize = 14f
+                        setTextColor(0xFFD32F2F.toInt())
+                        setPadding(0, dpToPx(4), 0, dpToPx(4))
+                        setTextIsSelectable(true)
+                    }
+                    fraudIndicatorsContainer.addView(indicatorView)
                 }
-                tvExtractedFields.text = fieldsText
             } else {
-                tvFieldsTitle.visibility = View.GONE
-                tvExtractedFields.visibility = View.GONE
+                fraudSection.visibility = View.GONE
+                noFraudSection.visibility = View.VISIBLE
             }
         }
 
@@ -109,25 +126,9 @@ class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultV
             }
         }
 
-        private fun formatFieldName(fieldName: String): String {
-            return fieldName.replace("_", " ").split(" ")
-                .joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }
-        }
-
-        private fun getStatusColor(status: DocumentStatus): Int {
-            return when (status) {
-                DocumentStatus.PASS -> 0xFF4CAF50.toInt() // Green
-                DocumentStatus.FLAGGED -> 0xFFFF9800.toInt() // Orange
-                DocumentStatus.FAIL -> 0xFFD32F2F.toInt() // Red
-            }
-        }
-
-        private fun getTamperingScoreColor(score: Float): Int {
-            return when {
-                score < 30 -> 0xFF4CAF50.toInt() // Green
-                score < 60 -> 0xFFFF9800.toInt() // Orange
-                else -> 0xFFD32F2F.toInt() // Red
-            }
+        private fun dpToPx(dp: Int): Int {
+            val density = itemView.context.resources.displayMetrics.density
+            return (dp * density).toInt()
         }
     }
 }
