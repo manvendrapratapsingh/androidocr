@@ -64,6 +64,13 @@
         android:onClick="onScanButtonClicked"
         android:text="@string/scan_button" />
 
+    <Button
+        android:id="@+id/btn_document_verification"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Document Verification"
+        android:layout_marginTop="16dp" />
+
     <TextView
         android:id="@+id/result_info"
         android:layout_width="match_parent"

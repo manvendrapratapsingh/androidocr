@@ -88,6 +88,7 @@ class  MainActivityCamera : AppCompatActivity() {
         setupGoogleSignIn()
         populateModeSelector()
         observeViewModel()
+        setupDocumentVerificationButton()
     }
 
     private fun setupGoogleSignIn() {
@@ -372,6 +373,13 @@ class  MainActivityCamera : AppCompatActivity() {
                     resultInfo.text = "❌ ERROR: ${state.message}\n\nCheck logs for detailed debugging info."
                 }
             }
+        }
+    }
+
+    private fun setupDocumentVerificationButton() {
+        findViewById<android.widget.Button>(R.id.btn_document_verification)?.setOnClickListener {
+            val intent = Intent(this, com.justdial.ocr.documentverification.ui.DocumentVerificationActivity::class.java)
+            startActivity(intent)
         }
     }
 
