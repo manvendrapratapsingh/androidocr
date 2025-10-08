@@ -1,7 +1,9 @@
 package com.justdial.ocr.documentverification.ui
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -15,10 +17,16 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.justdial.ocr.R
 import com.justdial.ocr.documentverification.service.DocumentVerificationService
 import kotlinx.coroutines.CoroutineScope
@@ -40,21 +48,9 @@ class DocumentVerificationActivity : AppCompatActivity() {
 
     private lateinit var documentService: DocumentVerificationService
     private lateinit var adapter: DocumentResultAdapter
+    private lateinit var scannerLauncher: ActivityResultLauncher<IntentSenderRequest>
 
     private var currentBitmap: Bitmap? = null
-
-    private val cameraLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val bitmap = result.data?.extras?.get("data") as? Bitmap
-            if (bitmap != null) {
-                handleImageSelected(bitmap)
-            } else {
-                Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     private val galleryLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -74,6 +70,12 @@ class DocumentVerificationActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_document_verification)
+
+        scannerLauncher = registerForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult()
+        ) { result ->
+            handleScannerResult(result)
+        }
 
         initializeViews()
         setupToolbar()
@@ -122,8 +124,7 @@ class DocumentVerificationActivity : AppCompatActivity() {
 
     private fun setupClickListeners() {
         btnCamera.setOnClickListener {
-            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            cameraLauncher.launch(intent)
+            launchDocumentScanner()
         }
 
         btnGallery.setOnClickListener {
@@ -137,6 +138,47 @@ class DocumentVerificationActivity : AppCompatActivity() {
             currentBitmap?.let { bitmap ->
                 analyzeDocument(bitmap)
             }
+        }
+    }
+
+    private fun launchDocumentScanner() {
+        val options = GmsDocumentScannerOptions.Builder()
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setGalleryImportAllowed(true)
+            .setPageLimit(1)
+            .build()
+
+        GmsDocumentScanning.getClient(options)
+            .getStartScanIntent(this)
+            .addOnSuccessListener { intentSender: IntentSender ->
+                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener { e: Exception ->
+                Log.e(TAG, "Failed to start document scanner", e)
+                Toast.makeText(this, "Failed to start scanner: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun handleScannerResult(activityResult: ActivityResult) {
+        val resultCode = activityResult.resultCode
+        val result = GmsDocumentScanningResult.fromActivityResultIntent(activityResult.data)
+
+        if (resultCode == Activity.RESULT_OK && result != null) {
+            val pages = result.pages
+            if (pages != null && pages.isNotEmpty()) {
+                val imageUri = pages[0].imageUri
+                val bitmap = uriToBitmap(imageUri)
+                if (bitmap != null) {
+                    handleImageSelected(bitmap)
+                } else {
+                    Toast.makeText(this, "Failed to load scanned image", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else if (resultCode == Activity.RESULT_CANCELED) {
+            Toast.makeText(this, "Scan cancelled", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Scan failed", Toast.LENGTH_SHORT).show()
         }
     }
 

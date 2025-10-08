@@ -135,13 +135,79 @@ Returns JSON string with complete cheque/e-NACH data:
 }
 ```
 
+## Document Verification Module (NEW)
+
+### Overview
+Standalone document verification system for Indian identity documents (PAN, DL, Voter ID, Passport) using Firebase Vertex AI with comprehensive fraud detection.
+
+### Architecture
+```
+/documentverification
+  /model
+    - DocumentType.kt          (Enums: PAN, DL, VOTER_ID, PASSPORT)
+    - DocumentAnalysisResult   (Fraud analysis results)
+  /service
+    - DocumentVerificationService.kt    (Main orchestrator)
+    - FirebaseDocumentAIService.kt      (Separate Firebase AI client)
+  /ui
+    - DocumentVerificationActivity.kt   (ML Kit scanner integration)
+    - DocumentResultAdapter.kt          (RecyclerView results display)
+```
+
+### Key Features
+- **Zero Breaking Changes**: Completely isolated from cheque/e-NACH code
+- **ML Kit Scanner**: Same document scanner as MainActivityCamera (boundary detection, auto-crop)
+- **AI Fraud Detection**: Gemini 2.5-flash with optimized prompt (70% token reduction)
+- **ELA Tampering Score**: AI-estimated score (0-100) for digital manipulation
+- **Multi-Document Support**: Auto-detect PAN/DL/Voter ID/Passport (including inner pages)
+- **Real-time Results**: In-memory display with card-based RecyclerView
+- **Region Compliant**: Uses asia-south1 endpoint
+
+### JSON Output Schema
+```json
+{
+  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
+  "prediction": "PASS|FLAGGED|FAIL",
+  "reason": "specific explanation",
+  "ela_tampering_score": 0.0,
+  "fraud_indicators": ["specific issues"],
+  "confidence": 0.0
+}
+```
+
+### Fraud Detection Focus
+- **Digital Tampering**: Clone stamps, pasted rectangles, font mismatches, inconsistent compression
+- **Fabricated Documents**: Missing security features, wrong formats, flat backgrounds
+- **Content Validation**: Document number regex, date logic, field alignment
+- **Does NOT penalize**: Blur, glare, shadows, age wear, fading, physical damage, scan artifacts
+
+### Scoring Rules
+- **PASS**: Score ≤35, no fraud indicators, document type identified
+- **FLAGGED**: Score 36-50, 1-2 fraud indicators
+- **FAIL**: Score >50, 3+ fraud indicators, or format violations
+
+### Usage
+1. Launch from MainActivityCamera → "Document Verification" button
+2. Scan with ML Kit (camera) or select from gallery
+3. Auto-analyze with Gemini 2.5-flash
+4. View results: thumbnail, type, status (color-coded), tampering score, fraud indicators
+
+### Files Added
+- `app/src/main/java/com/justdial/ocr/documentverification/model/DocumentType.kt`
+- `app/src/main/java/com/justdial/ocr/documentverification/service/DocumentVerificationService.kt`
+- `app/src/main/java/com/justdial/ocr/documentverification/service/FirebaseDocumentAIService.kt`
+- `app/src/main/java/com/justdial/ocr/documentverification/ui/DocumentVerificationActivity.kt`
+- `app/src/main/java/com/justdial/ocr/documentverification/ui/DocumentResultAdapter.kt`
+- `app/src/main/res/layout/activity_document_verification.xml`
+- `app/src/main/res/layout/item_document_result.xml`
+
 ## Files touched in this repo
 - `app/src/main/java/com/justdial/ocr/service/DocumentProcessorService.kt` — holds `createChequePrompt` and `createENachPrompt`.
 - `app/src/main/java/com/justdial/ocr/service/FirebaseAIService.kt` — image→model call, JSON parsing.
 - `app/src/main/java/com/justdial/ocr/model/ChequeOCRData.kt` — data model (now includes `fraudIndicators`).
 - `app/src/main/java/com/justdial/ocr/OCRResultActivity.kt` — external intent handler, returns JSON results.
-- `app/src/main/java/com/justdial/ocr/MainActivityCamera.kt` — camera capture, OCR processing, result serialization.
-- `app/src/main/AndroidManifest.xml` — intent filter configuration for external access.
+- `app/src/main/java/com/justdial/ocr/MainActivityCamera.kt` — camera capture, OCR processing, result serialization, document verification button.
+- `app/src/main/AndroidManifest.xml` — intent filter configuration for external access, DocumentVerificationActivity registration.
 
 ## Build & Test
 ```bash
@@ -155,8 +221,9 @@ Returns JSON string with complete cheque/e-NACH data:
 - Path: Client→Firebase AI Logic→Vertex AI (no custom backend)
 - React Native Integration: ✅ Complete (real OCR processing with camera capture)
 - External API: Intent-based via `com.justdial.ocr.PROCESS_DOCUMENT`
+- Document Verification: ✅ Complete (PAN/DL/Voter ID/Passport fraud detection)
 
 ---
-Last updated: Sept 10, 2025
-Status: Firebase Vertex AI (client‑to‑client, India region) + React Native Integration
+Last updated: January 8, 2025
+Status: Firebase Vertex AI (client‑to‑client, India region) + React Native Integration + Document Verification
 - to memorise
