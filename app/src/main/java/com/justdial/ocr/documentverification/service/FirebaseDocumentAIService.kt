@@ -8,6 +8,8 @@ import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.generationConfig
+import com.google.firebase.ai.type.thinkingConfig
 import com.google.firebase.app
 import com.justdial.ocr.documentverification.model.*
 import kotlinx.coroutines.Dispatchers
@@ -22,17 +24,33 @@ class FirebaseDocumentAIService {
     private lateinit var model: GenerativeModel
     private var isInitialized = false
 
-    fun initializeService(context: Context) {
+    fun initializeService(
+        context: Context,
+        thinkingBudget: Int = 1024,
+        maxOutputTokens: Int = 1024
+    ) {
         try {
             Log.d(TAG, "Initializing Firebase AI for Document Verification")
             Log.d(TAG, "Region: $REGION (India compliance)")
+            Log.d(TAG, "Thinking budget: $thinkingBudget, Max output tokens: $maxOutputTokens")
 
             val app = Firebase.app
             Log.d(TAG, "Firebase app initialized: ${app.name}")
 
+            val genConfig = generationConfig {
+                thinkingConfig = thinkingConfig {
+                    this.thinkingBudget = thinkingBudget
+                }
+               // this.maxOutputTokens = maxOutputTokens
+                responseMimeType = "application/json"
+            }
+
             model = Firebase.ai(backend = GenerativeBackend.vertexAI(
                 location = REGION
-            )).generativeModel("gemini-2.5-flash")
+            )).generativeModel(
+                modelName = "gemini-2.5-flash",
+                generationConfig = genConfig
+            )
 
             isInitialized = true
             Log.d(TAG, "✅ Firebase Document AI initialized successfully")

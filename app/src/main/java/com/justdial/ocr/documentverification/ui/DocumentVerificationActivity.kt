@@ -12,8 +12,10 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import com.google.android.material.card.MaterialCardView
@@ -28,6 +30,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.justdial.ocr.R
+import com.justdial.ocr.documentverification.model.DocumentType
 import com.justdial.ocr.documentverification.service.DocumentVerificationService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +49,7 @@ class DocumentVerificationActivity : AppCompatActivity() {
     private lateinit var progressText: TextView
     private lateinit var tvResultsTitle: TextView
     private lateinit var resultsRecyclerView: RecyclerView
+    private lateinit var spinnerDocumentType: Spinner
 
     private lateinit var documentService: DocumentVerificationService
     private lateinit var adapter: DocumentResultAdapter
@@ -99,6 +103,13 @@ class DocumentVerificationActivity : AppCompatActivity() {
         progressText = findViewById(R.id.progress_text)
         tvResultsTitle = findViewById(R.id.tv_results_title)
         resultsRecyclerView = findViewById(R.id.results_recycler_view)
+        spinnerDocumentType = findViewById(R.id.spinner_document_type)
+
+        // Setup spinner
+        val documentTypes = arrayOf("PAN Card", "Driving License", "Voter ID", "Passport")
+        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, documentTypes)
+        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerDocumentType.adapter = spinnerAdapter
     }
 
     private fun setupToolbar() {
@@ -198,7 +209,17 @@ class DocumentVerificationActivity : AppCompatActivity() {
     }
 
     private fun analyzeDocument(bitmap: Bitmap) {
-        showProgress("Analyzing document...")
+        // Get selected document type from spinner
+        val selectedDocType = when (spinnerDocumentType.selectedItemPosition) {
+            0 -> DocumentType.PAN
+            1 -> DocumentType.DRIVING_LICENSE
+            2 -> DocumentType.VOTER_ID
+            3 -> DocumentType.PASSPORT
+            else -> DocumentType.PAN
+        }
+
+        Log.d(TAG, "Analyzing document as: ${selectedDocType.name}")
+        showProgress("Analyzing ${selectedDocType.name}...")
 
         CoroutineScope(Dispatchers.Main).launch {
             try {
@@ -207,7 +228,7 @@ class DocumentVerificationActivity : AppCompatActivity() {
                     documentService.analyzeDocument(
                         context = this@DocumentVerificationActivity,
                         imageBytes = imageBytes,
-                        expectedType = null // Auto-detect
+                        expectedType = selectedDocType
                     )
                 }
 

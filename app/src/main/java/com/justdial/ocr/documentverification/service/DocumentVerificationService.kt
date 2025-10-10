@@ -23,17 +23,26 @@ class DocumentVerificationService {
     suspend fun analyzeDocument(
         context: Context,
         imageBytes: ByteArray,
-        expectedType: DocumentType? = null
+        expectedType: DocumentType
     ): Result<DocumentAnalysisResult> {
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Analyzing document with Firebase AI")
+                Log.d(TAG, "Expected document type: $expectedType")
 
                 if (!firebaseAI.isServiceInitialized()) {
                     firebaseAI.initializeService(context)
                 }
 
-                val prompt = createDocumentVerificationPrompt(expectedType)
+                val prompt = when (expectedType) {
+                    DocumentType.PAN -> createPANPrompt()
+                    DocumentType.DRIVING_LICENSE -> createDrivingLicensePrompt()
+                    DocumentType.VOTER_ID -> createVoterIDPrompt()
+                    DocumentType.PASSPORT -> createPassportPrompt()
+                    DocumentType.UNKNOWN -> createGenericPrompt()
+                }
+
+                Log.d(TAG, "Using ${expectedType.name} specific prompt")
                 val result = firebaseAI.analyzeDocument(context, imageBytes, prompt)
 
                 if (result.isSuccess) {
@@ -50,6 +59,216 @@ class DocumentVerificationService {
             }
         }
     }
+
+    private fun createPANPrompt(): String = """
+Verify PAN Card authenticity. Return ONLY valid JSON.
+
+OUTPUT:
+{
+  "document_type": "PAN",
+  "prediction": "PASS|FLAGGED|FAIL",
+  "reason": "specific explanation",
+  "ela_tampering_score": 0.0,
+  "fraud_indicators": ["specific issues"],
+  "confidence": 0.0
+}
+
+ACCEPTABLE (ignore):
+✓ Age wear, fading, creases, stains, yellowing
+✓ Scan blur, shadows, glare, slight rotation
+✓ Worn lamination, ink fading
+
+FRAUD (flag):
+✗ Clone stamp patterns, pasted rectangles
+✗ Font mismatches in printed text
+✗ Wrong PAN format (not ^[A-Z]{5}[0-9]{4}[A-Z]$)
+✗ Missing security features in clear image
+✗ Impossible shadows, unnatural edges
+
+PAN CHECKS (PASS needs ≥3):
+1. PAN format: ^[A-Z]{5}[0-9]{4}[A-Z]$ visible
+2. "INCOME TAX DEPARTMENT" or "Permanent Account Number" text
+3. Government emblem visible
+4. Photo present in correct position
+5. Signature field present
+
+SCORING:
+- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0 (clarity of assessment)
+- PASS: score ≤35, ≥3 checks passed, no fraud indicators
+- FLAGGED: score 36-50, 2 checks passed, minor concerns
+- FAIL: score >50, <2 checks, or clear digital manipulation
+
+Be specific in fraud_indicators. Prefer PASS for worn but legitimate documents.
+""".trimIndent()
+
+    private fun createDrivingLicensePrompt(): String = """
+Verify Driving License authenticity. Return ONLY valid JSON.
+
+OUTPUT:
+{
+  "document_type": "DRIVING_LICENSE",
+  "prediction": "PASS|FLAGGED|FAIL",
+  "reason": "specific explanation",
+  "ela_tampering_score": 0.0,
+  "fraud_indicators": ["specific issues"],
+  "confidence": 0.0
+}
+
+ACCEPTABLE (ignore):
+✓ Wear, fading, creases, dirt, bent corners
+✓ Scan artifacts, blur, shadows, rotation
+✓ Natural physical damage
+
+FRAUD (flag):
+✗ Clone stamp patterns, pasted elements
+✗ Font mismatches, misaligned text
+✗ Invalid license number format
+✗ Missing mandatory features
+✗ Digital manipulation artifacts
+
+DL CHECKS (PASS needs ≥3):
+1. License number format valid (state-specific)
+2. State transport authority logo/text visible
+3. Vehicle class codes present (MC, LMV, etc.)
+4. Photo in correct position
+5. Validity dates present
+
+SCORING:
+- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0
+- PASS: score ≤35, ≥3 checks passed, no fraud indicators
+- FLAGGED: score 36-50, 2 checks passed
+- FAIL: score >50, <2 checks, clear tampering
+
+Be specific. Don't penalize legitimate wear.
+""".trimIndent()
+
+    private fun createVoterIDPrompt(): String = """
+Verify Voter ID authenticity. Return ONLY valid JSON.
+
+OUTPUT:
+{
+  "document_type": "VOTER_ID",
+  "prediction": "PASS|FLAGGED|FAIL",
+  "reason": "specific explanation",
+  "ela_tampering_score": 0.0,
+  "fraud_indicators": ["specific issues"],
+  "confidence": 0.0
+}
+
+ACCEPTABLE (ignore):
+✓ Heavy wear, discoloration, fading
+✓ Damaged hologram, worn edges
+✓ Scan quality issues, shadows, blur
+
+FRAUD (flag):
+✗ Digital tampering, pasted elements
+✗ Wrong EPIC format (not ^[A-Z]{3}[0-9]{7}$)
+✗ Font mismatches
+✗ Missing all security features
+✗ Clone stamp patterns
+
+VOTER ID CHECKS (PASS needs ≥3):
+1. EPIC format: ^[A-Z]{3}[0-9]{7}$ readable
+2. "ELECTION COMMISSION" text or logo visible
+3. Photo present
+4. Hologram area present (even if faded)
+5. Officer signature/name present
+
+SCORING:
+- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0
+- PASS: score ≤35, ≥3 checks passed, no fraud indicators
+- FLAGGED: score 36-50, 2 checks passed
+- FAIL: score >50, <2 checks, clear manipulation
+
+Be specific. Accept aged but legitimate documents.
+""".trimIndent()
+
+    private fun createPassportPrompt(): String = """
+Verify Passport authenticity. Return ONLY valid JSON.
+
+OUTPUT:
+{
+  "document_type": "PASSPORT",
+  "prediction": "PASS|FLAGGED|FAIL",
+  "reason": "specific explanation",
+  "ela_tampering_score": 0.0,
+  "fraud_indicators": ["specific issues"],
+  "confidence": 0.0
+}
+
+ACCEPTABLE (ignore):
+✓ Natural wear, fading, creases
+✓ Photo angle, finger in frame, shadows
+✓ Scan artifacts, blur, glare
+✓ Worn lamination
+
+FRAUD (flag):
+✗ Digital manipulation, pasted elements
+✗ Wrong passport number (not ^[A-Z][0-9]{7}$)
+✗ Invalid MRZ format
+✗ Font mismatches
+✗ Missing security features
+✗ Screen capture indicators (moiré)
+
+PASSPORT CHECKS (PASS needs ≥4):
+1. Passport number: ^[A-Z][0-9]{7}$ visible
+2. "REPUBLIC OF INDIA" and emblem visible
+3. MRZ (two lines at bottom) present and format-valid
+4. Bilingual text (English/Hindi) present
+5. Guilloché background pattern visible
+6. Mandatory fields (name, DOB, dates) present
+
+INNER/ADDRESS PAGE (PASS needs ≥3):
+- Bilingual labels (Father/Mother/Spouse/Address)
+- Guilloché background pattern
+- Perforation dots along edge
+- Top-right barcode
+- "File No." field
+
+SCORING:
+- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0
+- PASS: score ≤35, required checks passed, no fraud
+- FLAGGED: score 36-50, minimum checks passed
+- FAIL: score >50, insufficient checks, clear tampering
+
+Be specific. Don't penalize natural wear or photo quality.
+""".trimIndent()
+
+    private fun createGenericPrompt(): String = """
+Detect and verify Indian identity document. Return ONLY valid JSON.
+
+OUTPUT:
+{
+  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
+  "prediction": "PASS|FLAGGED|FAIL",
+  "reason": "specific explanation",
+  "ela_tampering_score": 0.0,
+  "fraud_indicators": ["specific issues"],
+  "confidence": 0.0
+}
+
+DETECT TYPE:
+- PAN: Blue/maroon background, Income Tax Dept, 10-char PAN
+- DL: Transport logo, vehicle classes, validity
+- VOTER_ID: Election Commission logo, EPIC number
+- PASSPORT: "Republic of India", MRZ, passport number
+
+ACCEPTABLE: Age wear, physical damage, scan artifacts
+FRAUD: Digital tampering, pasted elements, format violations
+
+SCORING:
+- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0
+- PASS: Detected type, no fraud indicators
+- FLAGGED: Detected type, minor concerns
+- FAIL: Cannot detect or clear fraud
+
+Be specific. Accept worn legitimate documents.
+""".trimIndent()
 
 //    private fun createDocumentVerificationPrompt(expectedType: DocumentType?): String {
 //        return """
