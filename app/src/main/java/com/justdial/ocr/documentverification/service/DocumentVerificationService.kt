@@ -65,11 +65,11 @@ Verify PAN Card authenticity. Return ONLY valid JSON.
 
 OUTPUT:
 {
-  "document_type": "PAN",
+  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
-  "reason": "specific explanation",
+  "reason": "max 5 words",
   "ela_tampering_score": 0.0,
-  "fraud_indicators": ["specific issues"],
+  "fraud_indicators": ["max 2 items, 4 words each"],
   "confidence": 0.0
 }
 
@@ -107,11 +107,11 @@ Verify Driving License authenticity. Return ONLY valid JSON.
 
 OUTPUT:
 {
-  "document_type": "DRIVING_LICENSE",
+  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
-  "reason": "specific explanation",
+  "reason": "max 5 words",
   "ela_tampering_score": 0.0,
-  "fraud_indicators": ["specific issues"],
+  "fraud_indicators": ["max 2 items, 4 words each"],
   "confidence": 0.0
 }
 
@@ -149,11 +149,11 @@ Verify Voter ID authenticity. Return ONLY valid JSON.
 
 OUTPUT:
 {
-  "document_type": "VOTER_ID",
+  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
-  "reason": "specific explanation",
+  "reason": "max 5 words",
   "ela_tampering_score": 0.0,
-  "fraud_indicators": ["specific issues"],
+  "fraud_indicators": ["max 2 items, 4 words each"],
   "confidence": 0.0
 }
 
@@ -191,11 +191,11 @@ Verify Passport authenticity. Return ONLY valid JSON.
 
 OUTPUT:
 {
-  "document_type": "PASSPORT",
+  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
-  "reason": "specific explanation",
+  "reason": "max 5 words",
   "ela_tampering_score": 0.0,
-  "fraud_indicators": ["specific issues"],
+  "fraud_indicators": ["max 2 items, 4 words each"],
   "confidence": 0.0
 }
 
@@ -245,9 +245,9 @@ OUTPUT:
 {
   "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
-  "reason": "specific explanation",
+  "reason": "max 5 words",
   "ela_tampering_score": 0.0,
-  "fraud_indicators": ["specific issues"],
+  "fraud_indicators": ["max 2 items, 4 words each"],
   "confidence": 0.0
 }
 

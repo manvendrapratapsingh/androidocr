@@ -27,7 +27,7 @@ class FirebaseDocumentAIService {
     fun initializeService(
         context: Context,
         thinkingBudget: Int = 1024,
-        maxOutputTokens: Int = 1024
+        maxOutputTokens: Int = 512
     ) {
         try {
             Log.d(TAG, "Initializing Firebase AI for Document Verification")
