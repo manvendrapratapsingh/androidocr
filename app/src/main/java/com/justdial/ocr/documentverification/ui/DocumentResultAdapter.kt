@@ -52,6 +52,15 @@ class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultV
         private val fraudIndicatorsContainer: LinearLayout = itemView.findViewById(R.id.fraud_indicators_container)
         private val noFraudSection: LinearLayout = itemView.findViewById(R.id.no_fraud_section)
 
+        // Personal Info views
+        private val personalInfoSection: LinearLayout = itemView.findViewById(R.id.personal_info_section)
+        private val nameContainer: LinearLayout = itemView.findViewById(R.id.name_container)
+        private val tvPersonalName: TextView = itemView.findViewById(R.id.tv_personal_name)
+        private val idNumberContainer: LinearLayout = itemView.findViewById(R.id.id_number_container)
+        private val tvPersonalIdNumber: TextView = itemView.findViewById(R.id.tv_personal_id_number)
+        private val dobContainer: LinearLayout = itemView.findViewById(R.id.dob_container)
+        private val tvPersonalDob: TextView = itemView.findViewById(R.id.tv_personal_dob)
+
         fun bind(result: DocumentAnalysisResult, bitmap: Bitmap?) {
             val context = itemView.context
 
@@ -87,6 +96,38 @@ class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultV
             }
             tvTamperingScore.setBackgroundResource(scoreBackground)
             tvTamperingScore.setTextColor(scoreColor)
+
+            // Personal Information
+            val personalInfo = result.personalInfo
+            if (personalInfo != null && (personalInfo.name != null || personalInfo.idNumber != null || personalInfo.dob != null)) {
+                personalInfoSection.visibility = View.VISIBLE
+
+                // Name
+                if (personalInfo.name != null) {
+                    nameContainer.visibility = View.VISIBLE
+                    tvPersonalName.text = personalInfo.name
+                } else {
+                    nameContainer.visibility = View.GONE
+                }
+
+                // ID Number
+                if (personalInfo.idNumber != null) {
+                    idNumberContainer.visibility = View.VISIBLE
+                    tvPersonalIdNumber.text = personalInfo.idNumber
+                } else {
+                    idNumberContainer.visibility = View.GONE
+                }
+
+                // DOB
+                if (personalInfo.dob != null) {
+                    dobContainer.visibility = View.VISIBLE
+                    tvPersonalDob.text = personalInfo.dob
+                } else {
+                    dobContainer.visibility = View.GONE
+                }
+            } else {
+                personalInfoSection.visibility = View.GONE
+            }
 
             // Reason
             tvReason.text = result.reason

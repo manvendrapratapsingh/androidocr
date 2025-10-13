@@ -26,13 +26,12 @@ class FirebaseDocumentAIService {
 
     fun initializeService(
         context: Context,
-        thinkingBudget: Int = 1024,
-        maxOutputTokens: Int = 512
+        thinkingBudget: Int = 2048
     ) {
         try {
             Log.d(TAG, "Initializing Firebase AI for Document Verification")
             Log.d(TAG, "Region: $REGION (India compliance)")
-            Log.d(TAG, "Thinking budget: $thinkingBudget, Max output tokens: $maxOutputTokens")
+            Log.d(TAG, "Thinking budget: $thinkingBudget (higher for better analysis)")
 
             val app = Firebase.app
             Log.d(TAG, "Firebase app initialized: ${app.name}")
@@ -41,7 +40,10 @@ class FirebaseDocumentAIService {
                 thinkingConfig = thinkingConfig {
                     this.thinkingBudget = thinkingBudget
                 }
-               // this.maxOutputTokens = maxOutputTokens
+                temperature = 0.2f // Lower temperature for more deterministic/strict responses
+                topP = 0.8f
+                topK = 20
+                // maxOutputTokens removed - no restriction on output quality
                 responseMimeType = "application/json"
             }
 
@@ -148,6 +150,18 @@ class FirebaseDocumentAIService {
                 }
             }
 
+            // Parse personal_info
+            val personalInfo = if (jsonObject.has("personal_info")) {
+                val personalInfoObj = jsonObject.getJSONObject("personal_info")
+                PersonalInfo(
+                    name = personalInfoObj.optString("name").takeIf { it.isNotEmpty() && it != "null" },
+                    idNumber = personalInfoObj.optString("id_number").takeIf { it.isNotEmpty() && it != "null" },
+                    dob = personalInfoObj.optString("dob").takeIf { it.isNotEmpty() && it != "null" }
+                )
+            } else {
+                null
+            }
+
             return DocumentAnalysisResult(
                 imageUrl = "",
                 documentType = documentType,
@@ -157,7 +171,8 @@ class FirebaseDocumentAIService {
                 fraudIndicators = fraudIndicators,
                 extractedFields = emptyMap(),
                 confidence = jsonObject.optDouble("confidence", 0.0).toFloat(),
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                personalInfo = personalInfo
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse JSON", e)

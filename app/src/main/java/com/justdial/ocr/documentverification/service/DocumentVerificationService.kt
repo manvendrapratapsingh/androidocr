@@ -61,7 +61,7 @@ class DocumentVerificationService {
     }
 
     private fun createPANPrompt(): String = """
-Verify PAN Card authenticity. Return ONLY valid JSON.
+Verify PAN Card authenticity. PAN is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
 {
@@ -70,40 +70,77 @@ OUTPUT:
   "reason": "max 5 words",
   "ela_tampering_score": 0.0,
   "fraud_indicators": ["max 2 items, 4 words each"],
-  "confidence": 0.0
+  "confidence": 0.0,
+  "personal_info": {
+    "name": "string|null",
+    "id_number": "PAN or null",
+    "dob": "YYYY-MM-DD|null"
+  }
 }
 
 ACCEPTABLE (ignore):
 ✓ Age wear, fading, creases, stains, yellowing
 ✓ Scan blur, shadows, glare, slight rotation
 ✓ Worn lamination, ink fading
+✓ Natural physical damage, folded corners
 
-FRAUD (flag):
-✗ Clone stamp patterns, pasted rectangles
-✗ Font mismatches in printed text
+FRAUD (flag immediately):
+✗ Flat/uniform solid color background (no texture, no pattern variation)
+✗ Computer-generated appearance (perfect fonts, no printing texture)
+✗ Screen-printed or digitally fabricated (pixel halos, RGB sub-pixel artifacts)
+✗ Text floating without background texture underneath
+✗ Clone stamp patterns, copy-pasted rectangles with sharp edges
+✗ Font inconsistencies (different fonts for similar fields)
 ✗ Wrong PAN format (not ^[A-Z]{5}[0-9]{4}[A-Z]$)
-✗ Missing security features in clear image
-✗ Impossible shadows, unnatural edges
+✗ Missing hologram/emblem/watermark in clear image
+✗ Unnatural shadows or lighting inconsistencies
+✗ White/grey rectangular boxes around text fields
 
-PAN CHECKS (PASS needs ≥3):
+MANDATORY SECURITY FEATURES (all 4 required for PASS):
+1. Background texture/pattern visible (not flat solid color)
+2. Government emblem/hologram present (even if faded)
+3. "INCOME TAX DEPARTMENT" or "Permanent Account Number" text
+4. Printed texture visible (ink dots, printing artifacts) - NOT screen pixels
+
+PAN CHECKS (PASS needs ALL 5):
 1. PAN format: ^[A-Z]{5}[0-9]{4}[A-Z]$ visible
-2. "INCOME TAX DEPARTMENT" or "Permanent Account Number" text
-3. Government emblem visible
-4. Photo present in correct position
+2. Background has texture/pattern (NOT flat grey/white)
+3. Text integrated with background (NOT floating on solid color)
+4. Photo present in correct position (if e-PAN, photo field visible)
 5. Signature field present
 
-SCORING:
-- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
-- confidence: 0.0-1.0 (clarity of assessment)
-- PASS: score ≤35, ≥3 checks passed, no fraud indicators
-- FLAGGED: score 36-50, 2 checks passed, minor concerns
-- FAIL: score >50, <2 checks, or clear digital manipulation
+DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
+❌ Entire background is uniform solid color (RGB values nearly identical)
+❌ Text appears perfectly sharp but background is blurry (inconsistent quality)
+❌ No printing artifacts (too perfect = computer-generated)
+❌ Text has pixel halos or RGB sub-pixel fringing (screen capture/edit)
+❌ Fields appear as white/grey rectangles pasted on background
+❌ Background pattern suddenly stops behind text (masking artifact)
 
-Be specific in fraud_indicators. Prefer PASS for worn but legitimate documents.
+PERSONAL INFO (extract if visible):
+- name: printed cardholder name (uppercase as-is; trim spaces)
+- id_number: the 10-char PAN (uppercase, no spaces)
+- dob: normalize to YYYY-MM-DD if full date is readable; else null
+
+CRITICAL RULES:
+1. If background is flat solid color with no texture → ela_score = 70, FAIL
+2. If text appears digitally generated (no printing texture) → ela_score = 60, FAIL
+3. If security features ALL missing in clear image → ela_score = 80, FAIL
+4. If only PAN format correct but lacks 3+ security features → FLAGGED at minimum
+
+SCORING:
+- ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0 (how clearly you can assess)
+- PASS: score ≤30 AND ALL 5 PAN checks passed AND 4 mandatory security features present
+- FLAGGED: score 31-50 OR 3-4 checks passed OR minor concerns
+- FAIL: score >50 OR digital fabrication detected OR <3 checks passed
+
+IMPORTANT: Be STRICT for PAN. When in doubt between PASS and FLAGGED, choose FLAGGED.
+Digitally generated/fabricated PANs should NEVER PASS.
 """.trimIndent()
 
     private fun createDrivingLicensePrompt(): String = """
-Verify Driving License authenticity. Return ONLY valid JSON.
+Verify Driving License authenticity. DL is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
 {
@@ -112,50 +149,90 @@ OUTPUT:
   "reason": "max 5 words",
   "ela_tampering_score": 0.0,
   "fraud_indicators": ["max 2 items, 4 words each"],
-  "confidence": 0.0
+  "confidence": 0.0,
+  "personal_info": {
+    "name": "string|null",
+    "id_number": "DL number or null",
+    "dob": "YYYY-MM-DD|null"
+  }
 }
 
 ACCEPTABLE (ignore):
-✓ Wear, fading, creases, dirt, bent corners
-✓ Scan artifacts, blur, shadows, rotation
-✓ Natural physical damage
+✓ Wear, fading, creases, dirt, bent corners, scratches
+✓ Scan artifacts, blur, shadows, rotation, glare
+✓ Natural physical damage, lamination wear
+✓ Damaged hologram (but area still visible)
+✓ Ink fading, discoloration
 
-FRAUD (flag):
-✗ Clone stamp patterns, pasted elements
-✗ Font mismatches, misaligned text
-✗ Invalid license number format
-✗ Missing mandatory features
-✗ Digital manipulation artifacts
+FRAUD (flag immediately):
+✗ Flat/uniform solid color background (no card texture/pattern)
+✗ Computer-generated appearance (perfect fonts, no printing texture)
+✗ Screen-printed or digitally fabricated (pixel halos, RGB artifacts)
+✗ Text floating without background integration
+✗ Clone stamp patterns, copy-pasted rectangles with sharp edges
+✗ Font inconsistencies (different fonts for similar fields)
+✗ Invalid license number format (state-specific patterns violated)
+✗ Missing hologram/embossed seal area entirely in clear image
+✗ Unnatural shadows or lighting inconsistencies
+✗ White/grey rectangular boxes around text fields
 
-DL CHECKS (PASS needs ≥3):
-1. License number format valid (state-specific)
-2. State transport authority logo/text visible
-3. Vehicle class codes present (MC, LMV, etc.)
-4. Photo in correct position
-5. Validity dates present
+MANDATORY SECURITY FEATURES (all 4 required for PASS):
+1. Card background texture/pattern visible (not flat solid color)
+2. Hologram/embossed seal area present (even if worn, area must be visible)
+3. State transport authority logo/text visible
+4. Printed card texture visible (ink/plastic texture) - NOT screen pixels
+
+DL CHECKS - FRONT (PASS needs ALL 5):
+1. License number format valid (state-specific format acceptable)
+2. Background has card texture/pattern (NOT flat color)
+3. Text integrated with card background (NOT floating on solid color)
+4. Photo present in correct position
+5. Vehicle class codes present (MC, LMV, etc.) OR validity dates visible
 
 — BACK SIDE (if back image is provided) —
-Treat the following as **equivalent checks** to the front-side items (use them if only the back is available, or to strengthen confidence):
-B1. DL No. and Issuing Authority repeated/print present (e.g., "Licencing Authority DTO/SDM + State name")
-B2. Vehicle Class table present (e.g., MCWG/LMV rows with codes, issue date, category like NT/TRANS)
+Use these as **equivalent checks** (valid when only back is available):
+PASS needs ≥4 of these back-side checks:
+B1. DL No. and Issuing Authority repeated/print present (e.g., "DTO/SDM + State")
+B2. Vehicle Class table present (MCWG/LMV rows with codes, dates, category)
 B3. QR code or machine-readable block present
 B4. Security hologram/embossed seal area visible (even if worn)
 B5. Officer/Authority signature or facsimile present
-B6. Special validity fields present (e.g., "Hazardous validity", "Hill validity") or comparable state-specific fields
-B7. Emergency contact/administrative text block present (common on several states' reverse)
+B6. Special validity fields present (e.g., "Hazardous/Hill validity")
+B7. Emergency contact/administrative text block present
+
+DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
+❌ Entire background is uniform solid color (RGB values nearly identical)
+❌ Text appears perfectly sharp but card texture is missing (inconsistent)
+❌ No printing/card texture artifacts (too perfect = digital)
+❌ Text has pixel halos or RGB sub-pixel fringing (screen/edit artifact)
+❌ Fields appear as white/grey rectangles pasted on background
+❌ Security pattern suddenly stops behind text (masking artifact)
+❌ Hologram/embossed area completely absent in otherwise clear image
+
+PERSONAL INFO (extract if visible):
+- name: cardholder name from front; if only back provided and name absent, return null
+- id_number: license number (uppercase, preserve state format like "DL-0420110012345")
+- dob: date of birth if printed; normalize to YYYY-MM-DD; if only validity dates visible, keep dob=null
+
+CRITICAL RULES:
+1. If background is flat solid color with no texture → ela_score = 70, FAIL
+2. If text appears digitally generated (no card texture) → ela_score = 60, FAIL
+3. If hologram/embossed area completely missing in clear image → ela_score = 75, FAIL
+4. If only DL format correct but lacks 3+ security features → FLAGGED at minimum
 
 SCORING:
-- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
-- confidence: 0.0-1.0
-- PASS: score ≤35, ≥3 checks passed, no fraud indicators
-- FLAGGED: score 36-50, 2 checks passed
-- FAIL: score >50, <2 checks, clear tampering
+- ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0 (how clearly you can assess)
+- PASS: score ≤30 AND ALL 5 front checks (or ≥4 back checks) passed AND 4 mandatory security features present
+- FLAGGED: score 31-50 OR 3-4 checks passed OR minor concerns
+- FAIL: score >50 OR digital fabrication detected OR <3 checks passed
 
-Be specific. Don't penalize legitimate wear.
+IMPORTANT: Be STRICT for Driving License. When in doubt between PASS and FLAGGED, choose FLAGGED.
+Digitally generated/fabricated DLs should NEVER PASS.
 """.trimIndent()
 
     private fun createVoterIDPrompt(): String = """
-Verify Voter ID authenticity. Return ONLY valid JSON.
+Verify Voter ID authenticity. Voter ID is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
 {
@@ -164,50 +241,90 @@ OUTPUT:
   "reason": "max 5 words",
   "ela_tampering_score": 0.0,
   "fraud_indicators": ["max 2 items, 4 words each"],
-  "confidence": 0.0
+  "confidence": 0.0,
+  "personal_info": {
+    "name": "string|null",
+    "id_number": "EPIC or null",
+    "dob": "YYYY-MM-DD|null"
+  }
 }
 
 ACCEPTABLE (ignore):
-✓ Heavy wear, discoloration, fading
-✓ Damaged hologram, worn edges
-✓ Scan quality issues, shadows, blur
+✓ Heavy wear, discoloration, fading, yellowing
+✓ Damaged/worn hologram (but area still visible)
+✓ Scan quality issues, shadows, blur, glare
+✓ Worn edges, creases, lamination damage
+✓ Natural physical degradation
 
-FRAUD (flag):
-✗ Digital tampering, pasted elements
+FRAUD (flag immediately):
+✗ Flat/uniform solid color background (no security pattern)
+✗ Computer-generated appearance (perfect fonts, no card texture)
+✗ Screen-printed or digitally fabricated (pixel halos, RGB artifacts)
+✗ Text floating without background integration
+✗ Clone stamp patterns, copy-pasted rectangles with sharp edges
+✗ Font inconsistencies (different fonts for similar fields)
 ✗ Wrong EPIC format (not ^[A-Z]{3}[0-9]{7}$)
-✗ Font mismatches
-✗ Missing all security features
-✗ Clone stamp patterns
+✗ Missing hologram area entirely in clear image
+✗ Unnatural shadows or lighting inconsistencies
+✗ White/grey rectangular boxes around text fields
 
-VOTER ID CHECKS (PASS needs ≥3):
-1. EPIC format: ^[A-Z]{3}[0-9]{7}$ readable
-2. "ELECTION COMMISSION" text or logo visible
-3. Photo present
-4. Hologram area present (even if faded)
-5. Officer signature/name present
+MANDATORY SECURITY FEATURES (all 4 required for PASS):
+1. Card background texture/pattern visible (not flat solid color)
+2. Hologram area present (even if worn/faded, area must be visible)
+3. "ELECTION COMMISSION" text or logo visible
+4. Printed card texture visible (ink/card texture) - NOT screen pixels
+
+VOTER ID CHECKS - FRONT (PASS needs ALL 5):
+1. EPIC format: ^[A-Z]{3}[0-9]{7}$ readable and valid
+2. Background has security pattern/texture (NOT flat color)
+3. Text integrated with card background (NOT floating on solid color)
+4. Photo present in correct position
+5. Hologram area visible (even if faded/damaged)
 
 — BACK SIDE (if back image is provided) —
-Use these as **equivalent checks** (valid when only back is available, or to strengthen confidence):
+Use these as **equivalent checks** (valid when only back is available):
+PASS needs ≥4 of these back-side checks:
 B1. Address block present and structured (house/street, PS/Tehsil, District, PIN)
-B2. Date of issue present (e.g., dd-mm-yyyy, dd/mm/yyyy, or locale variant)
-B3. Assembly Constituency No. & Name present (e.g., “Assembly Constituency No & Name : 122 - TINSUKIA (GEN)”)
-B4. Part No. & Name/Booth location present (e.g., “Part No and Name : …”)
+B2. Date of issue present (dd-mm-yyyy or locale variant)
+B3. Assembly Constituency No. & Name present (e.g., "122 - TINSUKIA (GEN)")
+B4. Part No. & Name/Booth location present
 B5. Electoral Registration Officer text/signature or facsimile present
-B6. Official “Note/नोट” instructions block present (multi-language acceptable)
-B7. Watermark or repeating microtext (e.g., “ELECTION COMMISSION OF INDIA”) visible under wear
+B6. Official "Note/नोट" instructions block present (multi-language)
+B7. Watermark or repeating microtext visible (e.g., "ELECTION COMMISSION OF INDIA")
+
+DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
+❌ Entire background is uniform solid color (RGB values nearly identical)
+❌ Text appears perfectly sharp but card texture is missing (inconsistent)
+❌ No printing/card texture artifacts (too perfect = digital)
+❌ Text has pixel halos or RGB sub-pixel fringing (screen/edit artifact)
+❌ Fields appear as white/grey rectangles pasted on background
+❌ Security pattern suddenly stops behind text (masking artifact)
+❌ Hologram area completely absent in otherwise clear image
+
+PERSONAL INFO (extract if visible):
+- name: voter name from front; if only back uploaded and name absent, return null
+- id_number: EPIC (uppercase, no spaces, format ^[A-Z]{3}[0-9]{7}$)
+- dob: if printed on card; normalize to YYYY-MM-DD; if age-only shown (e.g., "Age: 20 Yrs"), return null
+
+CRITICAL RULES:
+1. If background is flat solid color with no pattern → ela_score = 70, FAIL
+2. If text appears digitally generated (no card texture) → ela_score = 60, FAIL
+3. If hologram area completely missing in clear image → ela_score = 75, FAIL
+4. If only EPIC format correct but lacks 3+ security features → FLAGGED at minimum
 
 SCORING:
-- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
-- confidence: 0.0-1.0
-- PASS: score ≤35, ≥3 checks passed, no fraud indicators
-- FLAGGED: score 36-50, 2 checks passed
-- FAIL: score >50, <2 checks, clear manipulation
+- ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0 (how clearly you can assess)
+- PASS: score ≤30 AND ALL 5 front checks (or ≥4 back checks) passed AND 4 mandatory security features present
+- FLAGGED: score 31-50 OR 3-4 checks passed OR minor concerns
+- FAIL: score >50 OR digital fabrication detected OR <3 checks passed
 
-Be specific. Accept aged but legitimate documents.
+IMPORTANT: Be STRICT for Voter ID. When in doubt between PASS and FLAGGED, choose FLAGGED.
+Digitally generated/fabricated Voter IDs should NEVER PASS.
 """.trimIndent()
 
     private fun createPassportPrompt(): String = """
-Verify Passport authenticity. Return ONLY valid JSON.
+Verify Passport authenticity. Passport is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
 {
@@ -216,48 +333,88 @@ OUTPUT:
   "reason": "max 5 words",
   "ela_tampering_score": 0.0,
   "fraud_indicators": ["max 2 items, 4 words each"],
-  "confidence": 0.0
+  "confidence": 0.0,
+  "personal_info": {
+    "name": "string|null",
+    "id_number": "File number if present; otherwise Passport no. or null",
+    "dob": "YYYY-MM-DD|null"
+  }
 }
 
 ACCEPTABLE (ignore):
-✓ Natural wear, fading, creases
+✓ Natural wear, fading, creases, yellowing
 ✓ Photo angle, finger in frame, shadows
-✓ Scan artifacts, blur, glare
-✓ Worn lamination
+✓ Scan artifacts, blur, glare, slight rotation
+✓ Worn lamination, page wear
+✓ Screen capture indicators (moiré pattern from display)
+✓ Photos taken from mobile/desktop screens (DigiLocker, mPassport apps)
+✓ Physical damage from normal use
 
-FRAUD (flag):
-✗ Digital manipulation, pasted elements
-✗ Wrong passport number (not ^[A-Z][0-9]{7}$)
-✗ Invalid MRZ format
-✗ Font mismatches
-✗ Missing security features
-✗ Screen capture indicators (moiré)
+FRAUD (flag immediately):
+✗ Flat/uniform solid background (no Guilloché pattern/texture)
+✗ Computer-generated appearance (perfect fonts, no printing texture)
+✗ Digitally fabricated (pixel halos, RGB artifacts)
+✗ Text floating without page integration
+✗ Clone stamp patterns, pasted elements with sharp edges
+✗ Font mismatches in printed fields (different fonts)
+✗ Wrong passport number format (not ^[A-Z][0-9]{7}$)
+✗ Invalid MRZ format (two-line format violations)
+✗ Missing ALL mandatory security features in clear image
+✗ Unnatural shadows or lighting inconsistencies
+✗ White/grey rectangular boxes around fields
 
-PASSPORT CHECKS (PASS needs ≥4):
-1. Passport number: ^[A-Z][0-9]{7}$ visible
-2. "REPUBLIC OF INDIA" and emblem visible
-3. MRZ (two lines at bottom) present and format-valid
-4. Bilingual text (English/Hindi) present
-5. Guilloché background pattern visible
-6. Mandatory fields (name, DOB, dates) present
+MANDATORY SECURITY FEATURES (all 4 required for PASS):
+1. Guilloché background pattern visible (security print, not flat)
+2. Government emblem present (Ashoka pillar)
+3. "REPUBLIC OF INDIA" text visible
+4. MRZ (Machine Readable Zone) - two lines at bottom
 
-INNER/ADDRESS PAGE (PASS needs ≥3):
-- Bilingual labels (Father/Mother/Spouse/Address)
-- Guilloché background pattern
-- Perforation dots along edge
-- Top-right barcode
-- "File No." field
+PASSPORT BIO PAGE CHECKS (PASS needs ALL 6):
+1. Passport number: ^[A-Z][0-9]{7}$ visible and valid
+2. Guilloché background pattern visible (NOT flat color)
+3. Text integrated with page (NOT floating on solid background)
+4. "REPUBLIC OF INDIA" and emblem visible
+5. MRZ two-line format present and valid
+6. Bilingual text (English/Hindi) present
+
+INNER/ADDRESS PAGE CHECKS (if address page provided, PASS needs ≥4):
+1. Bilingual labels visible (Father/Mother/Spouse/Address in English/Hindi)
+2. Guilloché background pattern visible
+3. Perforation dots along page edge
+4. Top-right barcode with human-readable code present
+5. "File No." field with alphanumeric value visible
+
+DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
+❌ Entire background is uniform solid color (no Guilloché pattern)
+❌ Text appears perfectly sharp but background texture missing (inconsistent)
+❌ No printing/page texture artifacts (too perfect = digital)
+❌ Text has pixel halos or RGB sub-pixel fringing (editing artifact)
+❌ Fields appear as white/grey rectangles pasted on background
+❌ Guilloché pattern suddenly stops behind text (masking artifact)
+❌ MRZ completely absent or format completely wrong in bio page
+
+PERSONAL INFO (extract if visible):
+- name: full name as printed on bio page (preserve case/spacing as-is)
+- id_number: prioritize "File No." if address page; otherwise passport number (uppercase, no spaces)
+- dob: extract from bio page DOB field; normalize to YYYY-MM-DD; if partial/unreadable, return null
+
+CRITICAL RULES:
+1. If background is flat solid color (no Guilloché) → ela_score = 70, FAIL
+2. If text appears digitally generated (no page texture) → ela_score = 60, FAIL
+3. If MRZ completely missing in bio page → ela_score = 75, FAIL
+4. If only passport format correct but lacks 3+ security features → FLAGGED at minimum
 
 SCORING:
-- ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
-- confidence: 0.0-1.0
-- PASS: score ≤35, required checks passed, no fraud
-- FLAGGED: score 36-50, minimum checks passed
-- FAIL: score >50, insufficient checks, clear tampering
+- ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0 (how clearly you can assess)
+- PASS: score ≤30 AND ALL 6 bio checks (or ≥4 address checks) passed AND 4 mandatory security features present
+- FLAGGED: score 31-50 OR 4-5 checks passed OR minor concerns OR screen capture artifacts
+- FAIL: score >50 OR digital fabrication detected OR <4 checks passed
 
-Be specific. Don't penalize natural wear or photo quality.
+IMPORTANT: Be STRICT for Passport, but ALLOW screen captures from official apps (DigiLocker/mPassport).
+When in doubt between PASS and FLAGGED, choose FLAGGED.
+Digitally generated/fabricated passports should NEVER PASS.
 """.trimIndent()
-
     private fun createGenericPrompt(): String = """
 Detect and verify Indian identity document. Return ONLY valid JSON.
 

@@ -19,6 +19,13 @@ enum class DocumentStatus {
 }
 
 @Serializable
+data class PersonalInfo(
+    val name: String? = null,
+    val idNumber: String? = null,
+    val dob: String? = null
+)
+
+@Serializable
 data class DocumentAnalysisResult(
     val imageUrl: String = "",
     val documentType: DocumentType = DocumentType.UNKNOWN,
@@ -28,7 +35,8 @@ data class DocumentAnalysisResult(
     val fraudIndicators: List<String> = emptyList(),
     val extractedFields: Map<String, String> = emptyMap(),
     val confidence: Float = 0.0f,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val personalInfo: PersonalInfo? = null
 )
 
 @Serializable

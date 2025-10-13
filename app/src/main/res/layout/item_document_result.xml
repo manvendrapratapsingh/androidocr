@@ -154,6 +154,112 @@
                     android:alpha="0.8" />
             </LinearLayout>
 
+            <!-- Personal Information Section -->
+            <LinearLayout
+                android:id="@+id/personal_info_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_score_container"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Personal Information:"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#212121"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Name -->
+                <LinearLayout
+                    android:id="@+id/name_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="100dp"
+                        android:layout_height="wrap_content"
+                        android:text="Name:"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="#424242" />
+
+                    <TextView
+                        android:id="@+id/tv_personal_name"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="JOHN DOE"
+                        android:textSize="14sp"
+                        android:textColor="#666666"
+                        android:textIsSelectable="true" />
+                </LinearLayout>
+
+                <!-- ID Number -->
+                <LinearLayout
+                    android:id="@+id/id_number_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="100dp"
+                        android:layout_height="wrap_content"
+                        android:text="ID Number:"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="#424242" />
+
+                    <TextView
+                        android:id="@+id/tv_personal_id_number"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="ABCDE1234F"
+                        android:textSize="14sp"
+                        android:textColor="#666666"
+                        android:textIsSelectable="true" />
+                </LinearLayout>
+
+                <!-- DOB -->
+                <LinearLayout
+                    android:id="@+id/dob_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="100dp"
+                        android:layout_height="wrap_content"
+                        android:text="DOB:"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="#424242" />
+
+                    <TextView
+                        android:id="@+id/tv_personal_dob"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="1990-01-01"
+                        android:textSize="14sp"
+                        android:textColor="#666666"
+                        android:textIsSelectable="true" />
+                </LinearLayout>
+            </LinearLayout>
+
             <!-- Reason Section -->
             <TextView
                 android:layout_width="wrap_content"
