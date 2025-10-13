@@ -107,7 +107,7 @@ Verify Driving License authenticity. Return ONLY valid JSON.
 
 OUTPUT:
 {
-  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
+  "document_type": "DRIVING_LICENSE|PAN|VOTER_ID|PASSPORT|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
   "reason": "max 5 words",
   "ela_tampering_score": 0.0,
@@ -134,6 +134,16 @@ DL CHECKS (PASS needs ≥3):
 4. Photo in correct position
 5. Validity dates present
 
+— BACK SIDE (if back image is provided) —
+Treat the following as **equivalent checks** to the front-side items (use them if only the back is available, or to strengthen confidence):
+B1. DL No. and Issuing Authority repeated/print present (e.g., "Licencing Authority DTO/SDM + State name")
+B2. Vehicle Class table present (e.g., MCWG/LMV rows with codes, issue date, category like NT/TRANS)
+B3. QR code or machine-readable block present
+B4. Security hologram/embossed seal area visible (even if worn)
+B5. Officer/Authority signature or facsimile present
+B6. Special validity fields present (e.g., "Hazardous validity", "Hill validity") or comparable state-specific fields
+B7. Emergency contact/administrative text block present (common on several states' reverse)
+
 SCORING:
 - ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
 - confidence: 0.0-1.0
@@ -149,7 +159,7 @@ Verify Voter ID authenticity. Return ONLY valid JSON.
 
 OUTPUT:
 {
-  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
+  "document_type": "VOTER_ID|PAN|DRIVING_LICENSE|PASSPORT|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
   "reason": "max 5 words",
   "ela_tampering_score": 0.0,
@@ -176,6 +186,16 @@ VOTER ID CHECKS (PASS needs ≥3):
 4. Hologram area present (even if faded)
 5. Officer signature/name present
 
+— BACK SIDE (if back image is provided) —
+Use these as **equivalent checks** (valid when only back is available, or to strengthen confidence):
+B1. Address block present and structured (house/street, PS/Tehsil, District, PIN)
+B2. Date of issue present (e.g., dd-mm-yyyy, dd/mm/yyyy, or locale variant)
+B3. Assembly Constituency No. & Name present (e.g., “Assembly Constituency No & Name : 122 - TINSUKIA (GEN)”)
+B4. Part No. & Name/Booth location present (e.g., “Part No and Name : …”)
+B5. Electoral Registration Officer text/signature or facsimile present
+B6. Official “Note/नोट” instructions block present (multi-language acceptable)
+B7. Watermark or repeating microtext (e.g., “ELECTION COMMISSION OF INDIA”) visible under wear
+
 SCORING:
 - ela_tampering_score: 0-35 PASS, 36-50 FLAGGED, 51+ FAIL
 - confidence: 0.0-1.0
@@ -191,7 +211,7 @@ Verify Passport authenticity. Return ONLY valid JSON.
 
 OUTPUT:
 {
-  "document_type": "PAN|DRIVING_LICENSE|VOTER_ID|PASSPORT|UNKNOWN",
+  "document_type": "PASSPORT|PAN|DRIVING_LICENSE|VOTER_ID|UNKNOWN",
   "prediction": "PASS|FLAGGED|FAIL",
   "reason": "max 5 words",
   "ela_tampering_score": 0.0,
