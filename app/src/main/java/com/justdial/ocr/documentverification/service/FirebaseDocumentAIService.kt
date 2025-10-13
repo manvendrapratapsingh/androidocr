@@ -21,7 +21,8 @@ class FirebaseDocumentAIService {
         private const val REGION = "asia-south1"
     }
 
-    private lateinit var model: GenerativeModel
+    private lateinit var modelStrict: GenerativeModel
+    private lateinit var modelFlexible: GenerativeModel
     private var isInitialized = false
 
     fun initializeService(
@@ -36,26 +37,42 @@ class FirebaseDocumentAIService {
             val app = Firebase.app
             Log.d(TAG, "Firebase app initialized: ${app.name}")
 
-            val genConfig = generationConfig {
+            // Strict config for PAN/DL/Voter ID (deterministic, consistent)
+            val strictConfig = generationConfig {
                 thinkingConfig = thinkingConfig {
                     this.thinkingBudget = thinkingBudget
                 }
                 temperature = 0.2f // Lower temperature for more deterministic/strict responses
                 topP = 0.8f
                 topK = 20
-                // maxOutputTokens removed - no restriction on output quality
                 responseMimeType = "application/json"
             }
 
-            model = Firebase.ai(backend = GenerativeBackend.vertexAI(
-                location = REGION
-            )).generativeModel(
+            // Flexible config for Passport (better at detecting anime/illustrations)
+            val flexibleConfig = generationConfig {
+                thinkingConfig = thinkingConfig {
+                    this.thinkingBudget = thinkingBudget
+                }
+                temperature = 0.4f // Higher temperature for better pattern recognition
+                topP = 0.95f        // More diverse sampling
+                topK = 40          // Wider token selection
+                responseMimeType = "application/json"
+            }
+
+            val backend = GenerativeBackend.vertexAI(location = REGION)
+
+            modelStrict = Firebase.ai(backend = backend).generativeModel(
                 modelName = "gemini-2.5-flash",
-                generationConfig = genConfig
+                generationConfig = strictConfig
+            )
+
+            modelFlexible = Firebase.ai(backend = backend).generativeModel(
+                modelName = "gemini-2.5-flash",
+                generationConfig = flexibleConfig
             )
 
             isInitialized = true
-            Log.d(TAG, "✅ Firebase Document AI initialized successfully")
+            Log.d(TAG, "✅ Firebase Document AI initialized successfully (strict + flexible models)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Firebase Document AI", e)
             throw e
@@ -67,7 +84,8 @@ class FirebaseDocumentAIService {
     suspend fun analyzeDocument(
         context: Context,
         imageBytes: ByteArray,
-        prompt: String
+        prompt: String,
+        useFlexibleModel: Boolean = false
     ): Result<DocumentAnalysisResult> {
         return withContext(Dispatchers.IO) {
             try {
@@ -75,14 +93,14 @@ class FirebaseDocumentAIService {
                     throw Exception("Firebase Document AI not initialized")
                 }
 
-                Log.d(TAG, "Starting document analysis")
+                Log.d(TAG, "Starting document analysis (${if (useFlexibleModel) "FLEXIBLE" else "STRICT"} model)")
                 Log.d(TAG, "Image size: ${imageBytes.size} bytes")
 
                 val bitmap = android.graphics.BitmapFactory.decodeByteArray(
                     imageBytes, 0, imageBytes.size
                 ) ?: throw Exception("Failed to decode image")
 
-                val response = generateContent(prompt, bitmap)
+                val response = generateContent(prompt, bitmap, useFlexibleModel)
                 val result = parseJsonToDocumentResult(response)
 
                 Log.d(TAG, "Document analysis completed")
@@ -94,16 +112,21 @@ class FirebaseDocumentAIService {
         }
     }
 
-    private suspend fun generateContent(prompt: String, imageBitmap: Bitmap): String {
+    private suspend fun generateContent(
+        prompt: String,
+        imageBitmap: Bitmap,
+        useFlexibleModel: Boolean = false
+    ): String {
         return try {
-            Log.d(TAG, "Sending request to Gemini API")
+            Log.d(TAG, "Sending request to Gemini API (${if (useFlexibleModel) "FLEXIBLE" else "STRICT"} config)")
 
             val inputContent = content {
                 text(prompt)
                 image(imageBitmap)
             }
 
-            val response = model.generateContent(inputContent)
+            val selectedModel = if (useFlexibleModel) modelFlexible else modelStrict
+            val response = selectedModel.generateContent(inputContent)
             val text = response.text ?: throw Exception("No response from AI")
 
             Log.d(TAG, "AI Response received: ${text.length} characters")

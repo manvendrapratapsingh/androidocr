@@ -42,8 +42,12 @@ class DocumentVerificationService {
                     DocumentType.UNKNOWN -> createGenericPrompt()
                 }
 
-                Log.d(TAG, "Using ${expectedType.name} specific prompt")
-                val result = firebaseAI.analyzeDocument(context, imageBytes, prompt)
+                // Use flexible model for Passport (better at detecting anime/illustrations)
+                // Use strict model for other documents (deterministic fraud detection)
+                val useFlexibleModel = (expectedType == DocumentType.PASSPORT)
+
+                Log.d(TAG, "Using ${expectedType.name} specific prompt (${if (useFlexibleModel) "FLEXIBLE" else "STRICT"} model)")
+                val result = firebaseAI.analyzeDocument(context, imageBytes, prompt, useFlexibleModel)
 
                 if (result.isSuccess) {
                     Log.d(TAG, "Document analysis successful")
@@ -85,6 +89,7 @@ ACCEPTABLE (ignore):
 ✓ Natural physical damage, folded corners
 
 FRAUD (flag immediately):
+✗ **COLLAGE/MULTIPLE IMAGES** (front+back side-by-side, multiple documents in one image) → ALWAYS FAIL
 ✗ Flat/uniform solid color background (no texture, no pattern variation)
 ✗ Computer-generated appearance (perfect fonts, no printing texture)
 ✗ Screen-printed or digitally fabricated (pixel halos, RGB sub-pixel artifacts)
@@ -110,6 +115,7 @@ PAN CHECKS (PASS needs ALL 5):
 5. Signature field present
 
 DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
+❌ **COLLAGE/MULTIPLE IMAGES detected** (two or more documents/sides visible in one image)
 ❌ Entire background is uniform solid color (RGB values nearly identical)
 ❌ Text appears perfectly sharp but background is blurry (inconsistent quality)
 ❌ No printing artifacts (too perfect = computer-generated)
@@ -123,10 +129,11 @@ PERSONAL INFO (extract if visible):
 - dob: normalize to YYYY-MM-DD if full date is readable; else null
 
 CRITICAL RULES:
-1. If background is flat solid color with no texture → ela_score = 70, FAIL
-2. If text appears digitally generated (no printing texture) → ela_score = 60, FAIL
-3. If security features ALL missing in clear image → ela_score = 80, FAIL
-4. If only PAN format correct but lacks 3+ security features → FLAGGED at minimum
+1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
+2. If background is flat solid color with no texture → ela_score = 70, FAIL
+3. If text appears digitally generated (no printing texture) → ela_score = 60, FAIL
+4. If security features ALL missing in clear image → ela_score = 80, FAIL
+5. If only PAN format correct but lacks 3+ security features → FLAGGED at minimum
 
 SCORING:
 - ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
@@ -161,76 +168,118 @@ ACCEPTABLE (ignore):
 ✓ Wear, fading, creases, dirt, bent corners, scratches
 ✓ Scan artifacts, blur, shadows, rotation, glare
 ✓ Natural physical damage, lamination wear
-✓ Damaged hologram (but area still visible)
+✓ Damaged hologram (area still present) or worn chip edges
+✓ **Large white card areas on Karnataka/TN/AP/Telangana/Kerala smart-cards**
+✓ Missing photo or personal details on legitimate Karnataka smart-card fronts (if hologram area + Karnataka state text visible)
+✓ Plain / low-security backs on Karnataka smart-cards when vehicle class table + authority signature are present
 ✓ Ink fading, discoloration
 
 FRAUD (flag immediately):
-✗ Flat/uniform solid color background (no card texture/pattern)
-✗ Computer-generated appearance (perfect fonts, no printing texture)
-✗ Screen-printed or digitally fabricated (pixel halos, RGB artifacts)
+✗ **COLLAGE/MULTIPLE IMAGES** (front+back side-by-side, multiple documents in one image) → ALWAYS FAIL
+✗ Computer-generated appearance (perfect fonts, no plastic/print texture)
+✗ Screen-printed/digitally fabricated (pixel halos, RGB artifacts)
 ✗ Text floating without background integration
-✗ Clone stamp patterns, copy-pasted rectangles with sharp edges
+✗ Clone stamp patterns, pasted rectangles with sharp edges
 ✗ Font inconsistencies (different fonts for similar fields)
-✗ Invalid license number format (state-specific patterns violated)
-✗ Missing hologram/embossed seal area entirely in clear image
+✗ Invalid license number format (see state patterns below)
+✗ **Absence of ALL secure elements** (no chip, no hologram/embossed seal, no UV/QR) in a clear image
 ✗ Unnatural shadows or lighting inconsistencies
 ✗ White/grey rectangular boxes around text fields
 
-MANDATORY SECURITY FEATURES (all 4 required for PASS):
-1. Card background texture/pattern visible (not flat solid color)
-2. Hologram/embossed seal area present (even if worn, area must be visible)
-3. State transport authority logo/text visible
-4. Printed card texture visible (ink/plastic texture) - NOT screen pixels
+MANDATORY SECURITY FEATURES FOR PASS:
 
-DL CHECKS - FRONT (PASS needs ALL 5):
-1. License number format valid (state-specific format acceptable)
-2. Background has card texture/pattern (NOT flat color)
-3. Text integrated with card background (NOT floating on solid color)
-4. Photo present in correct position
-5. Vehicle class codes present (MC, LMV, etc.) OR validity dates visible
+**Karnataka FRONT-ONLY smart cards** (DL number starts with KA):
+- Front may omit photo and personal info entirely.
+- PASS allowed when DL number is valid, plastic/card texture visible, hologram or embossed seal area present on front, and Karnataka transport text/crest (e.g., "Government of Karnataka", "Transport Department") is readable.
+- Chip module is typically on BACK - absence on front is NORMAL.
+
+**TN/AP/TG/Kerala FRONT-ONLY images** (DL number starts with TN/AP/TS/TG/KL):
+- PASS if: ALL 5 DL CHECKS pass + plastic/card texture visible
+- Hologram may be present on front OR back (varies by design)
+- Chip module is typically on BACK - absence on front is NORMAL
+- **Personal details (name/DOB) may be minimal or on back only** - do NOT fail for missing personal info if other checks pass
+
+**Other states OR back-side images (except minimal Karnataka backs)**: need any **2 of 4**:
+1. Card background/plastic texture visible
+2. Hologram/embossed seal OR optically variable element
+3. Contact chip module (gold pad) OR machine-readable feature (QR)
+4. State transport authority insignia/logo/emblem
+
+Karnataka backs: Smart-card backs can be minimal (mostly text). Treat robustness of textual blocks (vehicle class table, validity dates, issuing authority, signature) as primary evidence – hologram/QR may be absent.
+DL CHECKS - FRONT (standard – PASS needs ALL 5 unless Karnataka override below):
+1. **License number format valid** (see patterns below)
+2. Background shows **any** card/plastic/print texture (NOT uniform digital fill)
+3. Text integrated with card (not floating on pasted rectangles)
+4. Photo present in expected location (Karnataka smart-card front may legitimately omit the photo if hologram + Karnataka transport text are visible)
+5. Vehicle class info (LMV/MCWG etc.) **OR** validity dates visible (Karnataka smart-card front may omit these; treat as satisfied if hologram + Karnataka transport text are visible)
+
+Karnataka override: When DL number starts with KA and the front lacks photo/personal details, treat checks 4 and 5 as satisfied if hologram or embossed seal area and Karnataka state transport text/crest are clearly visible along with genuine card texture. Do NOT flag solely for missing photo, vehicle class, or DOB on such fronts.
+
 
 — BACK SIDE (if back image is provided) —
-Use these as **equivalent checks** (valid when only back is available):
-PASS needs ≥4 of these back-side checks:
-B1. DL No. and Issuing Authority repeated/print present (e.g., "DTO/SDM + State")
-B2. Vehicle Class table present (MCWG/LMV rows with codes, dates, category)
-B3. QR code or machine-readable block present
-B4. Security hologram/embossed seal area visible (even if worn)
+Use these as **equivalent checks** (valid when only back is available). PASS needs ≥4:
+B1. DL No. and Issuing Authority repeated/printed
+B2. Vehicle Class table (MCWG/LMV with codes/dates/category) **or** “COV” lines with dates
+B3. **Chip module visible** (counts as machine-readable feature) **or** QR block present
+B4. Security hologram/embossed/UV seal area **or** state crest/flag + Ashoka emblem cluster
 B5. Officer/Authority signature or facsimile present
-B6. Special validity fields present (e.g., "Hazardous/Hill validity")
-B7. Emergency contact/administrative text block present
+B6. Special validity fields (e.g., Hazardous/Hill validity) or administrative text block
+B7. Address / father’s name block as per state layout
+
+Karnataka backs often rely on B1/B2/B5/B6 with clear card texture. Lack of hologram/QR is acceptable when these textual features are crisp and aligned to the official layout.
 
 DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
-❌ Entire background is uniform solid color (RGB values nearly identical)
-❌ Text appears perfectly sharp but card texture is missing (inconsistent)
-❌ No printing/card texture artifacts (too perfect = digital)
-❌ Text has pixel halos or RGB sub-pixel fringing (screen/edit artifact)
-❌ Fields appear as white/grey rectangles pasted on background
-❌ Security pattern suddenly stops behind text (masking artifact)
-❌ Hologram/embossed area completely absent in otherwise clear image
+❌ **COLLAGE/MULTIPLE IMAGES detected** (two or more documents/sides visible in one image)
+❌ Entire surface looks uniformly synthetic (no plastic/print texture anywhere)
+❌ Text perfectly sharp while surface texture is absent/inconsistent
+❌ Pixel halos or RGB sub-pixel fringing around text/icons
+❌ Pasted white/grey rectangles behind fields
+❌ Security pattern abruptly stops behind text (masking)
+❌ Chip graphic looks printed (no metallic edges/relief)
+
+STATE / FORMAT ALLOWANCE (any one pattern is valid):
+- **SARATHI style**: ^[A-Z]{2}-?[0-9]{2}-?20[0-9]{2}-?[0-9]{5,8}$ (e.g., KA09 20120000439)
+- **Compact SARATHI**: ^[A-Z]{2}[0-9]{2}20[0-9]{2}[0-9]{5,8}$ (e.g., KA0920120000439)
+- **Legacy/alternate format**: ^[A-Z]{2,3}[0-9]{7,13}$ (e.g., DCA1800326, MH1234567890)
+- **Broad fallback**: ^[A-Z]{2,4}[0-9A-Z-\s]{7,15}$ (any valid state format)
+
+Examples accepted:
+- "KA09 20120000439" or "KA-09-2012-0000439" (SARATHI with/without dashes)
+- "DCA1800326" (Karnataka legacy/serial format)
+- "MH0120110012345" (legacy compact)
+- "TN65-2011-0001234" (SARATHI)
 
 PERSONAL INFO (extract if visible):
-- name: cardholder name from front; if only back provided and name absent, return null
-- id_number: license number (uppercase, preserve state format like "DL-0420110012345")
-- dob: date of birth if printed; normalize to YYYY-MM-DD; if only validity dates visible, keep dob=null
+- name: cardholder name; if only back provided or Karnataka front lacks it, return null
+- id_number: license number (uppercase; keep state separators like "KA09 2012 0000439" or with dashes)
+- dob: printed DOB if available; normalize to YYYY-MM-DD; if only validity dates visible or Karnataka front omits it, dob=null
 
 CRITICAL RULES:
-1. If background is flat solid color with no texture → ela_score = 70, FAIL
-2. If text appears digitally generated (no card texture) → ela_score = 60, FAIL
-3. If hologram/embossed area completely missing in clear image → ela_score = 75, FAIL
-4. If only DL format correct but lacks 3+ security features → FLAGGED at minimum
+1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
+2. **Karnataka front override** (DL No. starts with KA): if hologram/embossed seal area + Karnataka transport text/crest + genuine card texture are visible, treat missing photo, vehicle class, or DOB on front as acceptable (counts as meeting checks 4 & 5). Do NOT flag solely for those missing elements.
+3. **TN/AP/TG/Kerala smart-card fronts** (TN/AP/TS/TG/KL prefix): PASS only when all 5 front checks pass with texture visible; personal info may be minimal but photo should exist when design includes it.
+4. If **no secure element at all** (no texture, no insignia, no holo, no chip visible) → ela_score = 70, FAIL
+5. If text appears digitally generated with no card/plastic texture → ela_score = 60, FAIL
+6. **Do NOT fail Karnataka/TN/AP/TG/Kerala front-only cards for missing chip** – chip is on back; hologram may be on front or back (except Karnataka override requires a hologram/embossed seal on front)
+7. **Karnataka back override**: if DL No. starts with KA and back shows vehicle class table + issuing authority block + signature and consistent card texture, PASS/FLAG decisions must not hinge on missing hologram/QR/insignia.
+8. For other states or back-side images: Need 2+ security features for PASS
 
 SCORING:
-- ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
-- confidence: 0.0-1.0 (how clearly you can assess)
-- PASS: score ≤30 AND ALL 5 front checks (or ≥4 back checks) passed AND 4 mandatory security features present
+- ela_tampering_score: 0-25 PASS (for KA/TN/AP/TG/KL fronts), 0-30 PASS (others), 31-50 FLAGGED, 51+ FAIL
+- confidence: 0.0-1.0
+- PASS: 
+  * Karnataka front (KA prefix): score ≤25 AND valid DL number AND texture visible AND hologram/embossed seal + Karnataka transport text/crest present (photo/vehicle class optional)
+  * Karnataka back only: score ≤30 AND ≥4 back checks met (including vehicle class + issuing authority + signature) even if hologram/QR is absent
+  * TN/AP/TG/Kerala front: score ≤25 AND ALL 5 front checks passed AND texture visible
+  * Others: score ≤30 AND ALL 5 front checks passed AND ≥2 features present
 - FLAGGED: score 31-50 OR 3-4 checks passed OR minor concerns
 - FAIL: score >50 OR digital fabrication detected OR <3 checks passed
 
-IMPORTANT: Be STRICT for Driving License. When in doubt between PASS and FLAGGED, choose FLAGGED.
-Digitally generated/fabricated DLs should NEVER PASS.
+IMPORTANT:
+Be STRICT for Driving License EXCEPT for Karnataka/TN/AP/TG/Kerala smart-card fronts.
+South Indian smart-cards have security features primarily on BACK side.
+When in doubt between PASS and FLAGGED, choose FLAGGED - UNLESS it's a clear KA/TN/AP/TG/KL front meeting the criteria above.
 """.trimIndent()
-
     private fun createVoterIDPrompt(): String = """
 Verify Voter ID authenticity. Voter ID is CRITICAL - be STRICT. Return ONLY valid JSON.
 
@@ -257,6 +306,7 @@ ACCEPTABLE (ignore):
 ✓ Natural physical degradation
 
 FRAUD (flag immediately):
+✗ **COLLAGE/MULTIPLE IMAGES** (front+back side-by-side, multiple documents in one image) → ALWAYS FAIL
 ✗ Flat/uniform solid color background (no security pattern)
 ✗ Computer-generated appearance (perfect fonts, no card texture)
 ✗ Screen-printed or digitally fabricated (pixel halos, RGB artifacts)
@@ -293,6 +343,7 @@ B6. Official "Note/नोट" instructions block present (multi-language)
 B7. Watermark or repeating microtext visible (e.g., "ELECTION COMMISSION OF INDIA")
 
 DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
+❌ **COLLAGE/MULTIPLE IMAGES detected** (two or more documents/sides visible in one image)
 ❌ Entire background is uniform solid color (RGB values nearly identical)
 ❌ Text appears perfectly sharp but card texture is missing (inconsistent)
 ❌ No printing/card texture artifacts (too perfect = digital)
@@ -307,10 +358,11 @@ PERSONAL INFO (extract if visible):
 - dob: if printed on card; normalize to YYYY-MM-DD; if age-only shown (e.g., "Age: 20 Yrs"), return null
 
 CRITICAL RULES:
-1. If background is flat solid color with no pattern → ela_score = 70, FAIL
-2. If text appears digitally generated (no card texture) → ela_score = 60, FAIL
-3. If hologram area completely missing in clear image → ela_score = 75, FAIL
-4. If only EPIC format correct but lacks 3+ security features → FLAGGED at minimum
+1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
+2. If background is flat solid color with no pattern → ela_score = 70, FAIL
+3. If text appears digitally generated (no card texture) → ela_score = 60, FAIL
+4. If hologram area completely missing in clear image → ela_score = 75, FAIL
+5. If only EPIC format correct but lacks 3+ security features → FLAGGED at minimum
 
 SCORING:
 - ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
@@ -351,6 +403,7 @@ ACCEPTABLE (ignore):
 ✓ Physical damage from normal use
 
 FRAUD (flag immediately):
+✗ **COLLAGE/MULTIPLE IMAGES** (front+back side-by-side, multiple documents in one image) → ALWAYS FAIL
 ✗ Flat/uniform solid background (no Guilloché pattern/texture)
 ✗ Computer-generated appearance (perfect fonts, no printing texture)
 ✗ Digitally fabricated (pixel halos, RGB artifacts)
@@ -362,6 +415,7 @@ FRAUD (flag immediately):
 ✗ Missing ALL mandatory security features in clear image
 ✗ Unnatural shadows or lighting inconsistencies
 ✗ White/grey rectangular boxes around fields
+✗ **Non-photographic image** (anime/Ghibli/cartoon/illustration/3D render/CGI/AI-art)  ← ALWAYS FAIL
 
 MANDATORY SECURITY FEATURES (all 4 required for PASS):
 1. Guilloché background pattern visible (security print, not flat)
@@ -385,6 +439,7 @@ INNER/ADDRESS PAGE CHECKS (if address page provided, PASS needs ≥4):
 5. "File No." field with alphanumeric value visible
 
 DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
+❌ **COLLAGE/MULTIPLE IMAGES detected** (two or more documents/sides visible in one image)
 ❌ Entire background is uniform solid color (no Guilloché pattern)
 ❌ Text appears perfectly sharp but background texture missing (inconsistent)
 ❌ No printing/page texture artifacts (too perfect = digital)
@@ -392,6 +447,13 @@ DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
 ❌ Fields appear as white/grey rectangles pasted on background
 ❌ Guilloché pattern suddenly stops behind text (masking artifact)
 ❌ MRZ completely absent or format completely wrong in bio page
+❌ **Image is illustration/anime/cartoon/CG render/AI-art (non-photorealistic)**
+
+PHOTOREALISM TEST (must look like a real photo; if any 2 are missing → FAIL):
+- Natural paper texture or print dot/grain visible
+- Realistic lighting gradients and micro-shadows
+- Camera perspective/lens distortion (not perfectly orthographic)
+- Minor noise/compression or moiré (screenshots allowed)
 
 PERSONAL INFO (extract if visible):
 - name: full name as printed on bio page (preserve case/spacing as-is)
@@ -399,17 +461,19 @@ PERSONAL INFO (extract if visible):
 - dob: extract from bio page DOB field; normalize to YYYY-MM-DD; if partial/unreadable, return null
 
 CRITICAL RULES:
-1. If background is flat solid color (no Guilloché) → ela_score = 70, FAIL
-2. If text appears digitally generated (no page texture) → ela_score = 60, FAIL
-3. If MRZ completely missing in bio page → ela_score = 75, FAIL
-4. If only passport format correct but lacks 3+ security features → FLAGGED at minimum
+1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
+2. If background is flat solid color (no Guilloché) → ela_score = 70, FAIL
+3. If text appears digitally generated (no page texture) → ela_score = 60, FAIL
+4. If MRZ completely missing in bio page → ela_score = 75, FAIL
+5. If only passport format correct but lacks 3+ security features → FLAGGED at minimum
+6. **If image is non-photographic (anime/Ghibli/cartoon/illustration/CGI/AI-art)** → ela_score = 80, **FAIL** (no exceptions)
 
 SCORING:
 - ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
 - confidence: 0.0-1.0 (how clearly you can assess)
 - PASS: score ≤30 AND ALL 6 bio checks (or ≥4 address checks) passed AND 4 mandatory security features present
 - FLAGGED: score 31-50 OR 4-5 checks passed OR minor concerns OR screen capture artifacts
-- FAIL: score >50 OR digital fabrication detected OR <4 checks passed
+- FAIL: score >50 OR digital fabrication detected OR <4 checks passed OR **non-photographic image detected**
 
 IMPORTANT: Be STRICT for Passport, but ALLOW screen captures from official apps (DigiLocker/mPassport).
 When in doubt between PASS and FLAGGED, choose FLAGGED.
