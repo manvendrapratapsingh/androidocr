@@ -13,6 +13,7 @@ import com.justdial.ocr.R
 import com.justdial.ocr.documentverification.model.DocumentAnalysisResult
 import com.justdial.ocr.documentverification.model.DocumentStatus
 import com.justdial.ocr.documentverification.model.DocumentType
+import com.justdial.ocr.documentverification.model.ReviewRecommendation
 
 class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultViewHolder>() {
 
@@ -60,6 +61,13 @@ class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultV
         private val tvPersonalIdNumber: TextView = itemView.findViewById(R.id.tv_personal_id_number)
         private val dobContainer: LinearLayout = itemView.findViewById(R.id.dob_container)
         private val tvPersonalDob: TextView = itemView.findViewById(R.id.tv_personal_dob)
+
+        // Review Decision views
+        private val reviewDecisionSection: LinearLayout = itemView.findViewById(R.id.review_decision_section)
+        private val tvReviewRecommendation: TextView = itemView.findViewById(R.id.tv_review_recommendation)
+        private val tvRiskScore: TextView = itemView.findViewById(R.id.tv_risk_score)
+        private val tvAutoProcessable: TextView = itemView.findViewById(R.id.tv_auto_processable)
+        private val tvReviewReason: TextView = itemView.findViewById(R.id.tv_review_reason)
 
         fun bind(result: DocumentAnalysisResult, bitmap: Bitmap?) {
             val context = itemView.context
@@ -154,6 +162,51 @@ class DocumentResultAdapter : RecyclerView.Adapter<DocumentResultAdapter.ResultV
             } else {
                 fraudSection.visibility = View.GONE
                 noFraudSection.visibility = View.VISIBLE
+            }
+
+            // ✅ Review Decision Section (NEW)
+            val reviewDecision = result.reviewDecision
+            if (reviewDecision != null) {
+                reviewDecisionSection.visibility = View.VISIBLE
+
+                // Recommendation badge with color-coded background
+                val recommendationText = when (reviewDecision.recommendation) {
+                    ReviewRecommendation.AUTO_ACCEPT -> "✓ AUTO ACCEPT"
+                    ReviewRecommendation.MANUAL_REVIEW_RECOMMENDED -> "⚠ REVIEW RECOMMENDED"
+                    ReviewRecommendation.MANUAL_REVIEW_REQUIRED -> "⚠ REVIEW REQUIRED"
+                    ReviewRecommendation.AUTO_REJECT -> "✗ AUTO REJECT"
+                }
+                tvReviewRecommendation.text = recommendationText
+
+                val recommendationBackground = when (reviewDecision.recommendation) {
+                    ReviewRecommendation.AUTO_ACCEPT -> R.drawable.bg_status_pass
+                    ReviewRecommendation.MANUAL_REVIEW_RECOMMENDED -> R.drawable.bg_status_flagged
+                    ReviewRecommendation.MANUAL_REVIEW_REQUIRED -> R.drawable.bg_status_flagged
+                    ReviewRecommendation.AUTO_REJECT -> R.drawable.bg_status_fail
+                }
+                tvReviewRecommendation.setBackgroundResource(recommendationBackground)
+
+                // Risk score with color-coded text
+                val riskScoreText = String.format("%.1f", reviewDecision.riskScore)
+                tvRiskScore.text = riskScoreText
+
+                val riskColor = when {
+                    reviewDecision.riskScore <= 30 -> 0xFF388E3C.toInt()  // Green
+                    reviewDecision.riskScore <= 60 -> 0xFFF57C00.toInt()  // Orange
+                    else -> 0xFFD32F2F.toInt()  // Red
+                }
+                tvRiskScore.setTextColor(riskColor)
+
+                // Auto-processable flag
+                tvAutoProcessable.text = if (reviewDecision.autoProcessable) "Yes" else "No"
+                tvAutoProcessable.setTextColor(
+                    if (reviewDecision.autoProcessable) 0xFF388E3C.toInt() else 0xFFD32F2F.toInt()
+                )
+
+                // Decision reason
+                tvReviewReason.text = reviewDecision.reason
+            } else {
+                reviewDecisionSection.visibility = View.GONE
             }
         }
 

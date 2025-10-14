@@ -131,6 +131,11 @@ PERSONAL INFO (extract if visible):
 - dob: normalize to YYYY-MM-DD if full date is readable; else null
 
 CRITICAL RULES:
+0. If the image background shows pastel or gradient waves, smooth vector shapes,
+   or digital color blending resembling illustration or design template
+   (Ghibli/cartoon/AI-art look) → prediction="FAIL",
+   reason="Non-photographic Ghibli/illustration background",
+   ela_tampering_score = 80, confidence ≥ 0.9.
 1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
 2. If background is flat solid color with no texture → ela_score = 70, FAIL
 3. If text appears digitally generated (no printing texture) → ela_score = 60, FAIL
@@ -262,6 +267,11 @@ PERSONAL INFO (extract if visible):
 - dob: printed DOB if available; normalize to YYYY-MM-DD; if only validity dates visible or Karnataka front omits it, dob=null
 
 CRITICAL RULES:
+0. If the image background shows pastel or gradient waves, smooth vector shapes,
+   or digital color blending resembling illustration or design template
+   (Ghibli/cartoon/AI-art look) → prediction="FAIL",
+   reason="Non-photographic Ghibli/illustration background",
+   ela_tampering_score = 80, confidence ≥ 0.9.
 1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
 2. **Karnataka front override** (DL No. starts with KA): if hologram/embossed seal area + Karnataka transport text/crest + genuine card texture are visible, treat missing photo, vehicle class, or DOB on front as acceptable (counts as meeting checks 4 & 5). Do NOT flag solely for those missing elements.
 3. **TN/AP/TG/Kerala smart-card fronts** (TN/AP/TS/TG/KL prefix): PASS only when all 5 front checks pass with texture visible; personal info may be minimal but photo should exist when design includes it.
@@ -371,6 +381,11 @@ PERSONAL INFO (extract if visible):
 - dob: if printed on card; normalize to YYYY-MM-DD; if age-only shown (e.g., "Age: 20 Yrs"), return null
 
 CRITICAL RULES:
+0. If the image background shows pastel or gradient waves, smooth vector shapes,
+   or digital color blending resembling illustration or design template
+   (Ghibli/cartoon/AI-art look) → prediction="FAIL",
+   reason="Non-photographic Ghibli/illustration background",
+   ela_tampering_score = 80, confidence ≥ 0.9.
 1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
 2. If background is flat solid color with no pattern → ela_score = 70, FAIL
 3. If text appears digitally generated (no card texture) → ela_score = 60, FAIL
@@ -476,6 +491,11 @@ PERSONAL INFO (extract if visible):
 - dob: extract from bio page DOB field; normalize to YYYY-MM-DD; if partial/unreadable, return null
 
 CRITICAL RULES:
+0. If the image background shows pastel or gradient waves, smooth vector shapes,
+   or digital color blending resembling illustration or design template
+   (Ghibli/cartoon/AI-art look) → prediction="FAIL",
+   reason="Non-photographic Ghibli/illustration background",
+   ela_tampering_score = 80, confidence ≥ 0.9.
 1. **If COLLAGE/MULTIPLE IMAGES detected** (front+back together, multiple documents) → ela_score = 90, **FAIL** (only ONE image allowed)
 2. If background is flat solid color (no Guilloché) → ela_score = 70, FAIL
 3. If text appears digitally generated (no page texture) → ela_score = 60, FAIL
