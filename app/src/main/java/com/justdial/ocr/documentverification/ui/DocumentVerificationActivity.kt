@@ -1,9 +1,10 @@
 package com.justdial.ocr.documentverification.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.content.IntentSender
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -19,16 +20,13 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import com.google.android.material.card.MaterialCardView
-import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.justdial.ocr.R
 import com.justdial.ocr.documentverification.model.DocumentType
 import com.justdial.ocr.documentverification.service.DocumentVerificationService
@@ -37,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 class DocumentVerificationActivity : AppCompatActivity() {
 
@@ -53,10 +52,40 @@ class DocumentVerificationActivity : AppCompatActivity() {
 
     private lateinit var documentService: DocumentVerificationService
     private lateinit var adapter: DocumentResultAdapter
-    private lateinit var scannerLauncher: ActivityResultLauncher<IntentSenderRequest>
 
     private var currentBitmap: Bitmap? = null
+    private var currentPhotoUri: Uri? = null
 
+    // Camera permission launcher
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            launchCamera()
+        } else {
+            Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Camera launcher
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            currentPhotoUri?.let { uri ->
+                val bitmap = uriToBitmap(uri)
+                if (bitmap != null) {
+                    handleImageSelected(bitmap)
+                } else {
+                    Toast.makeText(this, "Failed to load captured image", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            Toast.makeText(this, "Camera capture cancelled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Gallery launcher
     private val galleryLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -79,12 +108,6 @@ class DocumentVerificationActivity : AppCompatActivity() {
         // Handle edge-to-edge display
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-
-        scannerLauncher = registerForActivityResult(
-            ActivityResultContracts.StartIntentSenderForResult()
-        ) { result ->
-            handleScannerResult(result)
-        }
 
         initializeViews()
         setupToolbar()
@@ -143,7 +166,7 @@ class DocumentVerificationActivity : AppCompatActivity() {
 
     private fun setupClickListeners() {
         btnCamera.setOnClickListener {
-            launchDocumentScanner()
+            checkCameraPermissionAndLaunch()
         }
 
         btnGallery.setOnClickListener {
@@ -160,44 +183,51 @@ class DocumentVerificationActivity : AppCompatActivity() {
         }
     }
 
-    private fun launchDocumentScanner() {
-        val options = GmsDocumentScannerOptions.Builder()
-            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
-            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
-            .setGalleryImportAllowed(true)
-            .setPageLimit(1)
-            .build()
-
-        GmsDocumentScanning.getClient(options)
-            .getStartScanIntent(this)
-            .addOnSuccessListener { intentSender: IntentSender ->
-                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+    private fun checkCameraPermissionAndLaunch() {
+        when {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                // Permission already granted, launch camera
+                launchCamera()
             }
-            .addOnFailureListener { e: Exception ->
-                Log.e(TAG, "Failed to start document scanner", e)
-                Toast.makeText(this, "Failed to start scanner: ${e.message}", Toast.LENGTH_SHORT).show()
+            else -> {
+                // Request camera permission
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
+        }
     }
 
-    private fun handleScannerResult(activityResult: ActivityResult) {
-        val resultCode = activityResult.resultCode
-        val result = GmsDocumentScanningResult.fromActivityResultIntent(activityResult.data)
+    private fun launchCamera() {
+        try {
+            Log.d(TAG, "Launching camera...")
 
-        if (resultCode == Activity.RESULT_OK && result != null) {
-            val pages = result.pages
-            if (pages != null && pages.isNotEmpty()) {
-                val imageUri = pages[0].imageUri
-                val bitmap = uriToBitmap(imageUri)
-                if (bitmap != null) {
-                    handleImageSelected(bitmap)
-                } else {
-                    Toast.makeText(this, "Failed to load scanned image", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } else if (resultCode == Activity.RESULT_CANCELED) {
-            Toast.makeText(this, "Scan cancelled", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Scan failed", Toast.LENGTH_SHORT).show()
+            // Create a temporary file to store the photo
+            val photoFile = File.createTempFile(
+                "document_${System.currentTimeMillis()}",
+                ".jpg",
+                cacheDir
+            )
+            Log.d(TAG, "Photo file created: ${photoFile.absolutePath}")
+
+            // Get URI using FileProvider
+            val photoUri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                photoFile
+            )
+            currentPhotoUri = photoUri
+            Log.d(TAG, "Photo URI: $photoUri")
+
+            // Launch camera with the URI
+            cameraLauncher.launch(photoUri)
+            Log.d(TAG, "Camera launcher called successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch camera", e)
+            Log.e(TAG, "Error details: ${e.javaClass.simpleName}: ${e.message}")
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to launch camera: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
