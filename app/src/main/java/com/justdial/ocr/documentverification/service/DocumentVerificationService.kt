@@ -122,6 +122,8 @@ DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
 ❌ Text has pixel halos or RGB sub-pixel fringing (screen capture/edit)
 ❌ Fields appear as white/grey rectangles pasted on background
 ❌ Background pattern suddenly stops behind text (masking artifact)
+❌ **Non-photographic image** (anime/Ghibli/cartoon/illustration/3D render/CGI/AI-art)  ← ALWAYS FAIL
+
 
 PERSONAL INFO (extract if visible):
 - name: printed cardholder name (uppercase as-is; trim spaces)
@@ -134,6 +136,8 @@ CRITICAL RULES:
 3. If text appears digitally generated (no printing texture) → ela_score = 60, FAIL
 4. If security features ALL missing in clear image → ela_score = 80, FAIL
 5. If only PAN format correct but lacks 3+ security features → FLAGGED at minimum
+6. **If image is non-photographic (anime/Ghibli/cartoon/illustration/CGI/AI-art)** → ela_score = 80, **FAIL** (no exceptions)
+
 
 SCORING:
 - ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
@@ -186,6 +190,7 @@ FRAUD (flag immediately):
 ✗ Unnatural shadows or lighting inconsistencies
 ✗ White/grey rectangular boxes around text fields
 
+
 MANDATORY SECURITY FEATURES FOR PASS:
 
 **Karnataka FRONT-ONLY smart cards** (DL number starts with KA):
@@ -236,6 +241,8 @@ DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
 ❌ Pasted white/grey rectangles behind fields
 ❌ Security pattern abruptly stops behind text (masking)
 ❌ Chip graphic looks printed (no metallic edges/relief)
+❌ **Non-photographic image** (anime/Ghibli/cartoon/illustration/3D render/CGI/AI-art)  ← ALWAYS FAIL
+
 
 STATE / FORMAT ALLOWANCE (any one pattern is valid):
 - **SARATHI style**: ^[A-Z]{2}-?[0-9]{2}-?20[0-9]{2}-?[0-9]{5,8}$ (e.g., KA09 20120000439)
@@ -263,6 +270,8 @@ CRITICAL RULES:
 6. **Do NOT fail Karnataka/TN/AP/TG/Kerala front-only cards for missing chip** – chip is on back; hologram may be on front or back (except Karnataka override requires a hologram/embossed seal on front)
 7. **Karnataka back override**: if DL No. starts with KA and back shows vehicle class table + issuing authority block + signature and consistent card texture, PASS/FLAG decisions must not hinge on missing hologram/QR/insignia.
 8. For other states or back-side images: Need 2+ security features for PASS
+9. **If image is non-photographic (anime/Ghibli/cartoon/illustration/CGI/AI-art)** → ela_score = 80, **FAIL** (no exceptions)
+
 
 SCORING:
 - ela_tampering_score: 0-25 PASS (for KA/TN/AP/TG/KL fronts), 0-30 PASS (others), 31-50 FLAGGED, 51+ FAIL
@@ -351,6 +360,8 @@ DIGITAL FABRICATION RED FLAGS (any 1 = FAIL):
 ❌ Fields appear as white/grey rectangles pasted on background
 ❌ Security pattern suddenly stops behind text (masking artifact)
 ❌ Hologram area completely absent in otherwise clear image
+❌ **Non-photographic image** (anime/Ghibli/cartoon/illustration/3D render/CGI/AI-art)  ← ALWAYS FAIL
+
 
 PERSONAL INFO (extract if visible):
 - name: voter name from front; if only back uploaded and name absent, return null
@@ -363,6 +374,8 @@ CRITICAL RULES:
 3. If text appears digitally generated (no card texture) → ela_score = 60, FAIL
 4. If hologram area completely missing in clear image → ela_score = 75, FAIL
 5. If only EPIC format correct but lacks 3+ security features → FLAGGED at minimum
+6. **If image is non-photographic (anime/Ghibli/cartoon/illustration/CGI/AI-art)** → ela_score = 80, **FAIL** (no exceptions)
+
 
 SCORING:
 - ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
