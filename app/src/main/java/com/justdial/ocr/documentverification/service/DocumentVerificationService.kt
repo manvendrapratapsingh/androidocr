@@ -64,7 +64,7 @@ class DocumentVerificationService {
         }
     }
 
-    private fun createPANPrompt(): String = """
+    private fun createPANPrompt(): String = """ You are a Fraud Detection Expert and 
 Verify PAN Card authenticity. PAN is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
@@ -150,7 +150,7 @@ IMPORTANT: Be STRICT for PAN. When in doubt between PASS and FLAGGED, choose FLA
 Digitally generated/fabricated PANs should NEVER PASS.
 """.trimIndent()
 
-    private fun createDrivingLicensePrompt(): String = """
+    private fun createDrivingLicensePrompt(): String = """ You are a Fraud Detection Expert and 
 Verify Driving License authenticity. DL is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
@@ -289,7 +289,7 @@ Be STRICT for Driving License EXCEPT for Karnataka/TN/AP/TG/Kerala smart-card fr
 South Indian smart-cards have security features primarily on BACK side.
 When in doubt between PASS and FLAGGED, choose FLAGGED - UNLESS it's a clear KA/TN/AP/TG/KL front meeting the criteria above.
 """.trimIndent()
-    private fun createVoterIDPrompt(): String = """
+    private fun createVoterIDPrompt(): String = """ You are a Fraud Detection Expert and 
 Verify Voter ID authenticity. Voter ID is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
@@ -326,6 +326,8 @@ FRAUD (flag immediately):
 ✗ Missing hologram area entirely in clear image
 ✗ Unnatural shadows or lighting inconsistencies
 ✗ White/grey rectangular boxes around text fields
+✗ **Non-photographic image** (anime/Ghibli/cartoon/illustration/3D render/CGI/AI-art)  ← ALWAYS FAIL
+
 
 MANDATORY SECURITY FEATURES (all 4 required for PASS):
 1. Card background texture/pattern visible (not flat solid color)
@@ -388,7 +390,7 @@ IMPORTANT: Be STRICT for Voter ID. When in doubt between PASS and FLAGGED, choos
 Digitally generated/fabricated Voter IDs should NEVER PASS.
 """.trimIndent()
 
-    private fun createPassportPrompt(): String = """
+    private fun createPassportPrompt(): String = """ You are a Fraud Detection Expert and 
 Verify Passport authenticity. Passport is CRITICAL - be STRICT. Return ONLY valid JSON.
 
 OUTPUT:
@@ -493,7 +495,7 @@ IMPORTANT: Be STRICT for Passport, but ALLOW screen captures from official apps 
 When in doubt between PASS and FLAGGED, choose FLAGGED.
 Digitally generated/fabricated passports should NEVER PASS.
 """.trimIndent()
-    private fun createGenericPrompt(): String = """
+    private fun createGenericPrompt(): String = """ You are a Fraud Detection Expert and 
 Detect and verify Indian identity document. Return ONLY valid JSON.
 
 OUTPUT:
