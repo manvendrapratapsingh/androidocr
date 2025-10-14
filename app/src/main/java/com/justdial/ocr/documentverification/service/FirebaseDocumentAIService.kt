@@ -42,20 +42,20 @@ class FirebaseDocumentAIService {
                 thinkingConfig = thinkingConfig {
                     this.thinkingBudget = thinkingBudget
                 }
-                temperature = 0.2f // Lower temperature for more deterministic/strict responses
-                topP = 0.8f
-                topK = 20
+                temperature = 0.0f // Lower temperature for more deterministic/strict responses
+                topP = 1.0f
+                topK = 1
                 responseMimeType = "application/json"
             }
 
             // Flexible config for Passport (better at detecting anime/illustrations)
             val flexibleConfig = generationConfig {
-                thinkingConfig = thinkingConfig {
+                /*thinkingConfig = thinkingConfig {
                     this.thinkingBudget = thinkingBudget
-                }
-                temperature = 0.4f // Higher temperature for better pattern recognition
-                topP = 0.95f        // More diverse sampling
-                topK = 40          // Wider token selection
+                }*/
+                temperature = 0.0f // Higher temperature for better pattern recognition
+                topP = 1.0f        // More diverse sampling
+                topK = 1         // Wider token selection
                 responseMimeType = "application/json"
             }
 

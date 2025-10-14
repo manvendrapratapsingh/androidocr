@@ -431,7 +431,7 @@ PASSPORT BIO PAGE CHECKS (PASS needs ALL 6):
 5. MRZ two-line format present and valid
 6. Bilingual text (English/Hindi) present
 
-INNER/ADDRESS PAGE CHECKS (if address page provided, PASS needs ≥4):
+INNER/ADDRESS PAGE CHECKS (address page alone can never PASS; use to support FLAGGED→PASS only when a bio page is also provided):
 1. Bilingual labels visible (Father/Mother/Spouse/Address in English/Hindi)
 2. Guilloché background pattern visible
 3. Perforation dots along page edge
@@ -467,13 +467,14 @@ CRITICAL RULES:
 4. If MRZ completely missing in bio page → ela_score = 75, FAIL
 5. If only passport format correct but lacks 3+ security features → FLAGGED at minimum
 6. **If image is non-photographic (anime/Ghibli/cartoon/illustration/CGI/AI-art)** → ela_score = 80, **FAIL** (no exceptions)
+7. If only the address/inner page is visible (no MRZ/passport number page), prediction MUST be "FLAGGED" (never "PASS"). Request the bio page.
 
 SCORING:
 - ela_tampering_score: 0-30 PASS, 31-50 FLAGGED, 51+ FAIL
-- confidence: 0.0-1.0 (how clearly you can assess)
-- PASS: score ≤30 AND ALL 6 bio checks (or ≥4 address checks) passed AND 4 mandatory security features present
-- FLAGGED: score 31-50 OR 4-5 checks passed OR minor concerns OR screen capture artifacts
-- FAIL: score >50 OR digital fabrication detected OR <4 checks passed OR **non-photographic image detected**
+- confidence: 0.0-1.0
+- PASS: score ≤30 AND **BIO PAGE present with MRZ** AND ALL 6 bio checks passed AND 4 mandatory security features present
+- FLAGGED: score 31-50 OR bio page missing (address page only) OR 4–5 checks passed OR minor concerns
+- FAIL: score >50 OR digital fabrication detected OR <4 checks passed
 
 IMPORTANT: Be STRICT for Passport, but ALLOW screen captures from official apps (DigiLocker/mPassport).
 When in doubt between PASS and FLAGGED, choose FLAGGED.
