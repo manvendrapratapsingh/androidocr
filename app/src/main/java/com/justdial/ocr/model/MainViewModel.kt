@@ -33,11 +33,6 @@ class MainViewModel : ViewModel() {
     private var lastChequeData: ChequeOCRData? = null
     private var lastENachData: ENachOCRData? = null
 
-    fun analyzeImage(context: Context, fullBitmap: Bitmap?, cropRect: Rect?) {
-        // Default to cheque processing
-        processCheque(context, fullBitmap, cropRect)
-    }
-
     fun processCheque(context: Context, fullBitmap: Bitmap?, cropRect: Rect?) {
         _ocrState.value = OcrUiState.Loading
 

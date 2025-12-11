@@ -27,11 +27,6 @@ data class ChequeOCRData(
     val signaturesMatchScore: Int = 0,
     val signaturesNotes: String = "",
     val signatureRegions: List<SignatureRegion> = emptyList(),
-    val signatureCountPayer: Int = 0,
-    val signatureCountSponsor: Int = 0,
-    val signatureCountUnknown: Int = 0,
-    val expectedSignatures: ExpectedSignatures = ExpectedSignatures(),
-    val missingExpectedSignatures: List<String> = emptyList(),
     // Quality and confidence metrics
     val processingConfidence: Float = 0.0f,
     val imageQuality: String = "",

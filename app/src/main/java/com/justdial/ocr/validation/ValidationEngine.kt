@@ -215,6 +215,46 @@ class ValidationEngine {
                 ))
             }
         }
+
+        if (enachData.signature_count < 4) {
+            errors.add(ValidationError(
+                field = "signature_count",
+                errorType = ErrorType.MISSING_FIELD,
+                message = "Expected 4 signatures, but found ${enachData.signature_count}"
+            ))
+        }
+
+        if (enachData.signatures_consistent == false) {
+            warnings.add(ValidationWarning(
+                field = "signatures_consistent",
+                warningType = WarningType.UNUSUAL_FORMAT,
+                message = "Signatures are not consistent"
+            ))
+        }
+
+        if (enachData.payer_signatures_match == false) {
+            warnings.add(ValidationWarning(
+                field = "payer_signatures_match",
+                warningType = WarningType.UNUSUAL_FORMAT,
+                message = "Payer signatures do not match"
+            ))
+        }
+
+        if (enachData.sponsor_signatures_match == false) {
+            warnings.add(ValidationWarning(
+                field = "sponsor_signatures_match",
+                warningType = WarningType.UNUSUAL_FORMAT,
+                message = "Sponsor signatures do not match"
+            ))
+        }
+
+        if (enachData.missing_expected_signatures.isNotEmpty()) {
+            errors.add(ValidationError(
+                field = "missing_expected_signatures",
+                errorType = ErrorType.MISSING_FIELD,
+                message = "Missing expected signatures: ${enachData.missing_expected_signatures.joinToString()}"
+            ))
+        }
         
         return ENachValidationResult(
             isValid = errors.isEmpty(),

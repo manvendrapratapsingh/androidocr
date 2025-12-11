@@ -60,6 +60,7 @@ class  MainActivityCamera : AppCompatActivity() {
     private val BASE_MODE = "BASE"
     private val BASE_MODE_WITH_FILTER = "BASE_WITH_FILTER"
     private var selectedMode = FULL_MODE
+    private var selectedDocumentType = "Cheque"
 
     private val viewModel: MainViewModel by viewModels()
 
@@ -87,10 +88,28 @@ class  MainActivityCamera : AppCompatActivity() {
 
         setupGoogleSignIn()
         populateModeSelector()
+        populateDocumentTypeSelector()
         observeViewModel()
         setupDocumentVerificationButton()
     }
 
+    private fun populateDocumentTypeSelector() {
+        val documentTypeSpinner = findViewById<Spinner>(R.id.document_type_spinner)
+        val documentTypes = arrayOf("Cheque", "eNACH")
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, documentTypes)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        documentTypeSpinner.adapter = adapter
+        documentTypeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
+                selectedDocumentType = parent.getItemAtPosition(position).toString()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>) {
+                // Another interface callback
+            }
+        }
+    }
+    
     private fun setupGoogleSignIn() {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken("134377649404-g8dl23e9f530g6khi4mkbf05jd46o6nd.apps.googleusercontent.com")
@@ -198,7 +217,11 @@ class  MainActivityCamera : AppCompatActivity() {
             showProgress("Starting OCR processing...")
             Log.d(TAG, "Starting OCR analysis for image: $imageUri")
             Log.d(TAG, "Image size: ${bitmap.width}x${bitmap.height}")
-            viewModel.analyzeImage(this@MainActivityCamera, bitmap, null)
+            if (selectedDocumentType == "Cheque") {
+                viewModel.processCheque(this@MainActivityCamera, bitmap, null)
+            } else {
+                viewModel.processENach(this@MainActivityCamera, bitmap, null)
+            }
         } else {
             hideProgress()
             Toast.makeText(this, "❌ Failed to load image.", Toast.LENGTH_SHORT).show()
@@ -271,21 +294,6 @@ class  MainActivityCamera : AppCompatActivity() {
                         if (state.chequeData.signatureCount > 0) {
                             append("\nTotal Signatures: ${state.chequeData.signatureCount}")
                             
-                            // Show signature breakdown by group
-                            val groupCounts = mutableListOf<String>()
-                            if (state.chequeData.signatureCountPayer > 0) {
-                                groupCounts.add("Payer: ${state.chequeData.signatureCountPayer}")
-                            }
-                            if (state.chequeData.signatureCountSponsor > 0) {
-                                groupCounts.add("Sponsor: ${state.chequeData.signatureCountSponsor}")
-                            }
-                            if (state.chequeData.signatureCountUnknown > 0) {
-                                groupCounts.add("Unknown: ${state.chequeData.signatureCountUnknown}")
-                            }
-                            if (groupCounts.isNotEmpty()) {
-                                append("\nBreakdown: ${groupCounts.joinToString(", ")}")
-                            }
-                            
                             // Show signature regions details
                             if (state.chequeData.signatureRegions.isNotEmpty()) {
                                 append("\nSignature Regions:")
@@ -298,15 +306,6 @@ class  MainActivityCamera : AppCompatActivity() {
                                         append(" - ${region.evidence}")
                                     }
                                 }
-                            }
-                            
-                            // Show expectations and missing signatures
-                            if (state.chequeData.expectedSignatures.payer > 0 || state.chequeData.expectedSignatures.sponsor > 0) {
-                                append("\nExpected: Payer(${state.chequeData.expectedSignatures.payer}) Sponsor(${state.chequeData.expectedSignatures.sponsor})")
-                            }
-                            
-                            if (state.chequeData.missingExpectedSignatures.isNotEmpty()) {
-                                append("\nMissing: ${state.chequeData.missingExpectedSignatures.joinToString(", ")}")
                             }
                             
                             // Multi-signature consistency analysis
@@ -350,13 +349,90 @@ class  MainActivityCamera : AppCompatActivity() {
                     Log.d(TAG, "ViewModel state: ENachSuccess - NACH processed")
                     hideProgress()
                     Toast.makeText(this, "✅ E-NACH processed successfully!", Toast.LENGTH_LONG).show()
+                    val fraudList = state.enachData.fraud_indicators
+                    val fraudText = if (fraudList.isEmpty()) "None" else fraudList.joinToString(
+                        separator = "\n  - ",
+                        prefix = "\n  - "
+                    )
+
+                    // Format enhanced signature verification information
+                    val signatureInfo = buildString {
+                        append("Signature Present: ${if (state.enachData.customerSignature) "Yes" else "No"}")
+                        
+                        if (state.enachData.rotation_applied != 0) {
+                            append("\nRotation Applied: ${state.enachData.rotation_applied}°")
+                        }
+                        
+                        if (state.enachData.signature_count > 0) {
+                            append("\nTotal Signatures: ${state.enachData.signature_count}")
+                            
+                            // Show signature breakdown by group
+                            val groupCounts = mutableListOf<String>()
+                            if (state.enachData.signature_count_payer > 0) {
+                                groupCounts.add("Payer: ${state.enachData.signature_count_payer}")
+                            }
+                            if (state.enachData.signature_count_sponsor > 0) {
+                                groupCounts.add("Sponsor: ${state.enachData.signature_count_sponsor}")
+                            }
+                            if (state.enachData.signature_count_unknown > 0) {
+                                groupCounts.add("Unknown: ${state.enachData.signature_count_unknown}")
+                            }
+                            if (groupCounts.isNotEmpty()) {
+                                append("\nBreakdown: ${groupCounts.joinToString(", ")}")
+                            }
+                            
+                            // Show signature regions details
+                            if (state.enachData.signature_regions.isNotEmpty()) {
+                                append("\nSignature Regions:")
+                                state.enachData.signature_regions.forEachIndexed { index, region ->
+                                    append("\n  ${index + 1}. ${region.group.name.lowercase().replaceFirstChar { it.uppercase() }}")
+                                    if (region.anchorText.isNotEmpty()) {
+                                        append(" (${region.anchorText})")
+                                    }
+                                    if (region.evidence.isNotEmpty()) {
+                                        append(" - ${region.evidence}")
+                                    }
+                                }
+                            }
+                            
+                            // Show expectations and missing signatures
+                            if (state.enachData.expected_signatures.payer > 0 || state.enachData.expected_signatures.sponsor > 0) {
+                                append("\nExpected: Payer(${state.enachData.expected_signatures.payer}) Sponsor(${state.enachData.expected_signatures.sponsor})")
+                            }
+                            
+                            if (state.enachData.missing_expected_signatures.isNotEmpty()) {
+                                append("\nMissing: ${state.enachData.missing_expected_signatures.joinToString(", ")}")
+                            }
+                            
+                            // Multi-signature consistency analysis
+                            if (state.enachData.signature_count >= 2) {
+                                val consistency = when (state.enachData.signatures_consistent) {
+                                    true -> "✅ Consistent"
+                                    false -> "❌ Inconsistent"
+                                    null -> "❓ Unclear"
+                                }
+                                append("\nSignatures Match: $consistency")
+                                append("\nMatch Score: ${state.enachData.signatures_match_score}%")
+
+                            }
+                            if (state.enachData.signatures_notes.isNotEmpty()) {
+                                append("\nNotes: ${state.enachData.signatures_notes}")
+                            }
+                        }
+                    }
+
                     val nachInfo = """
                         ✅ E-NACH OCR SUCCESS:
-                        Utility: ${state.enachData.utilityName ?: "Not found"}
-                        Account: ${state.enachData.accountNumber ?: "Not found"}
-                        Holder: ${state.enachData.accountHolderName ?: "Not found"}
-                        Bank: ${state.enachData.bankName ?: "Not found"}
-                        Validation: ${if (state.validation.isValid) "✅ Valid" else "❌ Invalid"}
+                        Utility: ${displayValue(state.enachData.utilityName)}
+                        Account: ${displayValue(state.enachData.accountNumber)}
+                        Holder: ${displayValue(state.enachData.accountHolderName)}
+                        Bank: ${displayValue(state.enachData.bankName)}
+                        IFSC: ${displayValue(state.enachData.ifscCode)}
+                        MICR: ${displayValue(state.enachData.micr_code)}
+                        $signatureInfo
+                        Document Quality: ${displayValue(state.enachData.document_quality)}
+                        Document Type: ${displayValue(state.enachData.document_type)}
+                        Fraud Indicators: $fraudText
                     """.trimIndent()
                     resultInfo.text = nachInfo
                 }

@@ -155,11 +155,15 @@ class MainActivity : AppCompatActivity() {
                     binding.progressBar.visibility = View.GONE
                     val result = buildString {
                         append("✅ E-NACH PROCESSED\n\n")
-                        append("Utility: ${it.enachData.utilityName}\n")
+                        append("Bank: ${it.enachData.bankName}\n")
                         append("Account: ${it.enachData.accountNumber}\n")
                         append("IFSC: ${it.enachData.ifscCode}\n")
                         append("Holder: ${it.enachData.accountHolderName}\n")
-                        append("Max Amount: ${it.enachData.maxAmount}\n")
+                        append("Signature Count: ${it.enachData.signature_count}\n")
+                        append("Signatures Consistent: ${it.enachData.signatures_consistent}\n")
+                        append("Signatures Match Score: ${it.enachData.signatures_match_score}\n")
+                        append("Payer Signatures Match: ${it.enachData.payer_signatures_match}\n")
+                        append("Sponsor Signatures Match: ${it.enachData.sponsor_signatures_match}\n")
                         if (it.validation.errors.isNotEmpty()) {
                             append("\n❌ Validation Errors:\n")
                             it.validation.errors.forEach { error ->
@@ -233,7 +237,7 @@ class MainActivity : AppCompatActivity() {
                 override fun onCaptureSuccess(image: ImageProxy) {
                     val fullBitmap = image.toBitmap()
                     image.close()
-                    viewModel.analyzeImage(this@MainActivity, fullBitmap, cropRect)
+                    // viewModel.analyzeImage(this@MainActivity, fullBitmap, cropRect)
                 }
 
                 override fun onError(exc: ImageCaptureException) {

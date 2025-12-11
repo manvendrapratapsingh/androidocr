@@ -314,12 +314,7 @@ class FirebaseAIService {
                 signaturesConsistent = signaturesConsistent,
                 signaturesMatchScore = jsonObject.optInt("signatures_match_score", 0),
                 signaturesNotes = jsonObject.optString("signatures_notes", ""),
-                signatureRegions = signatureRegionsList,
-                signatureCountPayer = jsonObject.optInt("signature_count_payer", 0),
-                signatureCountSponsor = jsonObject.optInt("signature_count_sponsor", 0),
-                signatureCountUnknown = jsonObject.optInt("signature_count_unknown", 0),
-                expectedSignatures = expectedSignatures,
-                missingExpectedSignatures = missingExpectedList
+                signatureRegions = signatureRegionsList
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse cheque JSON", e)
@@ -327,31 +322,144 @@ class FirebaseAIService {
         }
     }
     
-    private fun parseJsonToENachData(jsonString: String): ENachOCRData {
+private fun parseJsonToENachData(jsonString: String): ENachOCRData {
         try {
             val cleanJson = extractJsonFromResponse(jsonString)
+            Log.d(TAG, "=== JSON PARSING DEBUG ===")
+            Log.d(TAG, "CLEANED JSON: $cleanJson")
+            Log.d(TAG, "=========================")
             val jsonObject = org.json.JSONObject(cleanJson)
+
+            // Parse fraud indicators array if present
+            val fraudIndicatorsArray = jsonObject.optJSONArray("fraud_indicators")
+            val fraudIndicatorsList = mutableListOf<String>()
+            if (fraudIndicatorsArray != null) {
+                for (i in 0 until fraudIndicatorsArray.length()) {
+                    val reason = fraudIndicatorsArray.optString(i)
+                    if (!reason.isNullOrBlank()) fraudIndicatorsList.add(reason)
+                }
+            }
+
+            // Parse signatures_consistent field (can be true, false, or null)
+            val signaturesConsistentStr = jsonObject.optString("signatures_consistent", "null")
+            val signaturesConsistent = when (signaturesConsistentStr) {
+                "true" -> true
+                "false" -> false
+                else -> null  // handles "null" and any other values
+            }
             
+            val payerSignaturesMatchStr = jsonObject.optString("payer_signatures_match", "null")
+            val payerSignaturesMatch = when (payerSignaturesMatchStr) {
+                "true" -> true
+                "false" -> false
+                else -> null  // handles "null" and any other values
+            }
+
+            val sponsorSignaturesMatchStr = jsonObject.optString("sponsor_signatures_match", "null")
+            val sponsorSignaturesMatch = when (sponsorSignaturesMatchStr) {
+                "true" -> true
+                "false" -> false
+                else -> null  // handles "null" and any other values
+            }
+
+            // Parse signature regions array
+            val signatureRegionsArray = jsonObject.optJSONArray("signature_regions")
+            val signatureRegionsList = mutableListOf<com.justdial.ocr.model.SignatureRegion>()
+            if (signatureRegionsArray != null) {
+                for (i in 0 until signatureRegionsArray.length()) {
+                    val regionObj = signatureRegionsArray.optJSONObject(i)
+                    if (regionObj != null) {
+                        val bboxObj = regionObj.optJSONObject("bbox")
+                        val bbox = if (bboxObj != null) {
+                            com.justdial.ocr.model.BoundingBox(
+                                x = bboxObj.optDouble("x", 0.0).toFloat(),
+                                y = bboxObj.optDouble("y", 0.0).toFloat(),
+                                w = bboxObj.optDouble("w", 0.0).toFloat(),
+                                h = bboxObj.optDouble("h", 0.0).toFloat()
+                            )
+                        } else {
+                            com.justdial.ocr.model.BoundingBox()
+                        }
+
+                        val groupStr = regionObj.optString("group", "unknown").lowercase()
+                        val group = when (groupStr) {
+                            "payer" -> com.justdial.ocr.model.SignatureGroup.PAYER
+                            "sponsor" -> com.justdial.ocr.model.SignatureGroup.SPONSOR
+                            else -> com.justdial.ocr.model.SignatureGroup.UNKNOWN
+                        }
+
+                        signatureRegionsList.add(
+                            com.justdial.ocr.model.SignatureRegion(
+                                bbox = bbox,
+                                group = group,
+                                anchorText = regionObj.optString("anchor_text", ""),
+                                evidence = regionObj.optString("evidence", "")
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Parse expected signatures object
+            val expectedSigsObj = jsonObject.optJSONObject("expected_signatures")
+            val expectedSignatures = if (expectedSigsObj != null) {
+                com.justdial.ocr.model.ExpectedSignatures(
+                    payer = expectedSigsObj.optInt("payer", 0),
+                    sponsor = expectedSigsObj.optInt("sponsor", 0)
+                )
+            } else {
+                com.justdial.ocr.model.ExpectedSignatures()
+            }
+
+            // Parse missing expected signatures array
+            val missingExpectedArray = jsonObject.optJSONArray("missing_expected_signatures")
+            val missingExpectedList = mutableListOf<String>()
+            if (missingExpectedArray != null) {
+                for (i in 0 until missingExpectedArray.length()) {
+                    val missing = missingExpectedArray.optString(i)
+                    if (!missing.isNullOrBlank()) missingExpectedList.add(missing)
+                }
+            }
+
             return ENachOCRData(
-                utilityName = jsonObject.optString("utilityName", ""),
-                utilityCode = jsonObject.optString("utilityCode", ""),
-                customerRefNumber = jsonObject.optString("customerRefNumber", ""),
-                accountHolderName = jsonObject.optString("accountHolderName", ""),
-                bankName = jsonObject.optString("bankName", ""),
-                accountNumber = jsonObject.optString("accountNumber", ""),
-                ifscCode = jsonObject.optString("ifscCode", ""),
-                accountType = jsonObject.optString("accountType", ""),
-                maxAmount = jsonObject.optString("maxAmount", ""),
+                utilityName = jsonObject.optString("utility_name", ""),
+                utilityCode = jsonObject.optString("utility_code", ""),
+                customerRefNumber = jsonObject.optString("customer_ref_number", ""),
+                accountHolderName = jsonObject.optString("account_holder_name", ""),
+                bankName = jsonObject.optString("bank_name", ""),
+                accountNumber = jsonObject.optString("account_number", ""),
+                ifscCode = jsonObject.optString("ifsc_code", ""),
+                micr_code = jsonObject.optString("micr_code", ""),
+                accountType = jsonObject.optString("account_type", ""),
+                maxAmount = jsonObject.optString("max_amount", ""),
                 frequency = jsonObject.optString("frequency", ""),
-                startDate = jsonObject.optString("startDate", ""),
-                endDate = jsonObject.optString("endDate", ""),
-                primaryAccountRef = jsonObject.optString("primaryAccountRef", ""),
-                sponsorBankName = jsonObject.optString("sponsorBankName", ""),
+                startDate = jsonObject.optString("start_date", ""),
+                endDate = jsonObject.optString("end_date", ""),
+                primaryAccountRef = jsonObject.optString("primary_account_ref", ""),
+                sponsorBankName = jsonObject.optString("sponsor_bank_name", ""),
                 umrn = jsonObject.optString("umrn", ""),
-                mandateType = jsonObject.optString("mandateType", ""),
-                authMode = jsonObject.optString("authMode", ""),
-                customerSignature = jsonObject.optString("customerSignature", "false").toBoolean(),
-                dateOfMandate = jsonObject.optString("dateOfMandate", "")
+                mandateType = jsonObject.optString("mandate_type", ""),
+                authMode = jsonObject.optString("auth_mode", ""),
+                customerSignature = jsonObject.optBoolean("signature_present", false),
+                dateOfMandate = jsonObject.optString("date_of_mandate", ""),
+                document_quality = jsonObject.optString("document_quality", ""),
+                document_type = jsonObject.optString("document_type", ""),
+                fraud_indicators = fraudIndicatorsList,
+                rotation_applied = jsonObject.optInt("rotation_applied", 0),
+                signature_count = jsonObject.optInt("signature_count", 0),
+                signatures_consistent = signaturesConsistent,
+                signatures_match_score = jsonObject.optInt("signatures_match_score", 0),
+                signatures_notes = jsonObject.optString("signatures_notes", ""),
+                payer_signatures_match = payerSignaturesMatch,
+                sponsor_signatures_match = sponsorSignaturesMatch,
+                payer_match_score = jsonObject.optInt("payer_match_score", 0),
+                sponsor_match_score = jsonObject.optInt("sponsor_match_score", 0),
+                signature_regions = signatureRegionsList,
+                signature_count_payer = jsonObject.optInt("signature_count_payer", 0),
+                signature_count_sponsor = jsonObject.optInt("signature_count_sponsor", 0),
+                signature_count_unknown = jsonObject.optInt("signature_count_unknown", 0),
+                expected_signatures = expectedSignatures,
+                missing_expected_signatures = missingExpectedList
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse E-NACH JSON", e)

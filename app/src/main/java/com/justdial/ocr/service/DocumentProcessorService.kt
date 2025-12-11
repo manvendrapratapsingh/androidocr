@@ -133,60 +133,35 @@ class DocumentProcessorService {
 
     private fun createChequePrompt(): String {
         return """
-You are an expert OCR system for Indian bank cheques and Indian e-NACH forms. You are also an expert signature detection system for Indian e-NACH forms and cheques. Extract ONLY the requested fields in valid JSON.
-
-CRITICAL INSTRUCTION: The "account_holder_name" MUST be the printed name of the account owner on the cheque, NOT the handwritten "Pay To" name. For company cheques, this is usually printed near the signature line or below the amount.
-
 OUTPUT SCHEMA (return ONLY this JSON; no extra text):
 {
   "account_holder_name": "",
   "bank_name": "",
   "account_number": "",
-  "ifsc_code": "",
+  "ifsc_code": "", // CRITICAL: Extract the IFSC code. If unreadable, leave blank.
   "micr_code": "",
   "signature_present": false,
   "document_quality": "good",
   "document_type": "printed",
   "fraud_indicators": [],
-
   "rotation_applied": 0,
-
   "signature_count": 0,
   "signatures_consistent": null,
   "signatures_match_score": 0,
   "signatures_notes": "",
-  
-  // CRITICAL: For e-NACH forms, separate matching of payer vs sponsor signatures
-  "payer_signatures_match": null,      // true/false/null - do payer signatures match each other?
-  "sponsor_signatures_match": null,    // true/false/null - do sponsor signatures match each other?
-  "payer_match_score": 0,             // 0-100 score for payer signature similarity
-  "sponsor_match_score": 0,           // 0-100 score for sponsor signature similarity
-
-  // Each detected handwritten signature must have one entry here.
-  // bbox values are normalized to the full (rotation-corrected) image in [0..1].
   "signature_regions": [
     {
       "bbox": {"x":0.0,"y":0.0,"w":0.0,"h":0.0},
-      "group": "unknown",              // one of: payer | sponsor | unknown
-      "position_number": 0,            // 1=left payer, 2=left sponsor, 3=right payer, 4=right sponsor
-      "anchor_text": "",               // nearest printed text like "For <Company>", "PARTNER", "Authorised Signatory"
-      "evidence": ""                   // short note: "cursive above PARTNER (left)", "partial due to crop", etc.
+      "group": "unknown",
+      "anchor_text": "",
+      "evidence": ""
     }
-  ],
-
-  // Per-group counts for reliability when forms have two signers each side
-  "signature_count_payer": 0,
-  "signature_count_sponsor": 0,
-  "signature_count_unknown": 0,
-
-  // Optional expectations if anchors imply multiple signers
-  "expected_signatures": {"payer": 0, "sponsor": 0},
-  "missing_expected_signatures": []
+  ]
 }
 
 Rules:
 1) Return ONLY valid JSON exactly matching the schema above. Use "" (empty string) or [] when unreadable/unknown.
-2) Prioritize the printed "account_holder_name";.
+2) Prioritize the printed "account_holder_name".
 3) "fraud_indicators" only for visible issues (e.g., no MICR band; no bank logo/watermark; layout inconsistent).
 4) Be conservative and cite only what is visible.
 
@@ -202,123 +177,11 @@ ORIENTATION & SWEEP:
 8) Normalize orientation so the form reads horizontally; set "rotation_applied" to 0/90/180/270.
 9) Scan the entire image edge-to-edge, with EXTRA attention to the bottom strip where signatures appear.
 
-CRITICAL e-NACH SIGNATURE DETECTION PATTERN:
-10) MANDATORY for e-NACH forms: You MUST find exactly 4 handwritten signatures arranged as follows:
-    
-    STANDARD e-NACH SIGNATURE LAYOUT (from left to right):
-    ┌─────────────────────────────────────────────────────────────┐
-    │  Position 1          Position 2          Position 3          Position 4    │
-    │  [PAYER SIG]        [SPONSOR SIG]       [PAYER SIG]        [SPONSOR SIG]  │
-    │  Above text:        Above text:         Above text:         Above text:    │
-    │  "PARTNER" or       Company name        "PARTNER" or       Company name   │
-    │  Customer label     "For [COMPANY]"     Customer label     "For [COMPANY]"│
-    └─────────────────────────────────────────────────────────────┘
-    
-    The pattern is: PAYER-SPONSOR-PAYER-SPONSOR (alternating)
-    - Positions 1 & 3: Customer/Payer signatures (should match each other)
-    - Positions 2 & 4: Company/Sponsor signatures (should match each other)
-
-11) SIGNATURE POSITION IDENTIFICATION:
-    Position 1 (Leftmost): PAYER signature - look for "PARTNER", "Authorised Signatory" without company name
-    Position 2 (Left-Center): SPONSOR signature - look for "For [COMPANY NAME]" or company-specific text
-    Position 3 (Right-Center): PAYER signature - similar anchor text as Position 1
-    Position 4 (Rightmost): SPONSOR signature - similar anchor text as Position 2
-    
-    Common anchor texts for PAYER: "PARTNER", "Authorised Signatory", "Customer"
-    Common anchor texts for SPONSOR: "For SHAREHOLDER AND SERVICES", "For JUSTDIAL LIMITED", company names
-
-12) SIGNATURE IDENTIFICATION CHARACTERISTICS:
-    - Signatures are HANDWRITTEN CURSIVE text above the printed labels
-    - They look like flowing, connected handwriting (not printed block letters)
-    - Each signature is typically a person's name written in cursive/script style
-    - Look ABOVE the printed text labels, not below
-    - EXCLUDE any "CANCELLED", "CANCEL", "VOID" text - these are NOT signatures
-
-13) SCAN METHOD - Check these 4 positions systematically:
-    a) Scan leftmost area → Find PAYER signature → Set position_number=1
-    b) Scan left-center → Find SPONSOR signature → Set position_number=2
-    c) Scan right-center → Find PAYER signature → Set position_number=3
-    d) Scan rightmost area → Find SPONSOR signature → Set position_number=4
-
-14) FOR EACH OF THE 4 SIGNATURES:
-    - Add entry to "signature_regions" array
-    - Set "position_number" (1-4) based on left-to-right position
-    - Set bbox to approximate location
-    - Set "anchor_text" to the printed text below the signature
-    - Set "evidence" to describe location and appearance
-    - Set "group" to "payer" for positions 1 & 3, "sponsor" for positions 2 & 4
-
-15) VALIDATION: 
-    - signature_count MUST equal 4 for e-NACH forms
-    - signature_count_payer MUST equal 2 (positions 1 & 3)
-    - signature_count_sponsor MUST equal 2 (positions 2 & 4)
-    - If you find fewer, re-scan more carefully
-
-GROUPING AND POSITION ASSIGNMENT:
-16) Use the position and anchor text to determine group:
-    - Positions 1 & 3 → "payer" group (customer signatures)
-    - Positions 2 & 4 → "sponsor" group (company signatures)
-    - If unclear from position alone, use anchor text as secondary indicator
-
-17) Set per-group counts:
-    - "signature_count_payer" = count of payer signatures (should be 2)
-    - "signature_count_sponsor" = count of sponsor signatures (should be 2)
-    - "signature_count" = total signatures (should be 4)
-    - "signature_present" = true (if signature_count ≥ 1)
-
-MULTI-SIGNATURE MATCHING (e-NACH specific):
-18) PAYER SIGNATURE MATCHING (positions 1 & 3):
-    - Compare the two payer signatures to each other
-    - Check handwriting style, slant, loops, baseline, stroke patterns
-    - Set "payer_match_score": 0-100 (90-100=very likely same, 75-89=likely same, <60=different)
-    - Set "payer_signatures_match": true if ≥75, false if <60, null if unclear
-
-19) SPONSOR SIGNATURE MATCHING (positions 2 & 4):
-    - Compare the two sponsor signatures to each other
-    - Check handwriting style, slant, loops, baseline, stroke patterns
-    - Set "sponsor_match_score": 0-100 (90-100=very likely same, 75-89=likely same, <60=different)
-    - Set "sponsor_signatures_match": true if ≥75, false if <60, null if unclear
-
-20) OVERALL SIGNATURE CONSISTENCY:
-    - "signatures_consistent" = true only if BOTH payer_signatures_match AND sponsor_signatures_match are true
-    - "signatures_match_score" = average of payer_match_score and sponsor_match_score
-    - Add detailed notes in "signatures_notes" about the matching results
-
-EXPECTATION HEURISTICS:
-21) For e-NACH forms, always expect:
-    - Exactly 4 signatures total
-    - 2 payer signatures that should match each other
-    - 2 sponsor signatures that should match each other
-    - Set "expected_signatures": {"payer": 2, "sponsor": 2}
-
-22) If fewer than 4 signatures found:
-    - List missing positions in "missing_expected_signatures"
-    - Re-scan the image more carefully before finalizing
-
-QUALITY & FRAUD:
-23) Only mark fraud if there are tampering signs. Pure blur/glare is NOT fraud.
-24) Common fraud indicators for e-NACH: mismatched signatures within same group, copy-pasted signatures, digitally added signatures
-
-FINAL VALIDATIONS:
-25) For e-NACH forms:
-    - Verify signature_count == 4
-    - Verify signature_count_payer == 2
-    - Verify signature_count_sponsor == 2
-    - Verify each signature has correct position_number (1-4)
-    - Verify payer_signatures_match and sponsor_signatures_match are evaluated
-26) Double-check you found ALL 4 signatures before returning
-27) Ensure "CANCELLED" text is never counted as a signature
-
 EDGE CASES:
-28) If no MICR band visible, set "micr_code": "" and add "no MICR band" to "fraud_indicators"
-29) If IFSC/MICR unreadable, leave "" rather than guessing
-30) If printed account holder name not visible than take hand written
-31) If "CANCELLED" is written on form, mention in signatures_notes but do not count as signature
-
-CRITICAL OUTPUT REQUIREMENT:
-32) The system consuming this JSON expects separate matching scores for payer vs sponsor signatures
-33) DO NOT compare payer signatures to sponsor signatures - only compare within each group
-34) The key business logic is: payer signatures (1&3) should match, sponsor signatures (2&4) should match
+10) If no MICR band visible, set "micr_code": "" and add "no MICR band" to "fraud_indicators"
+11) If IFSC/MICR unreadable, leave "" rather than guessing
+12) If printed account holder name not visible than take hand written
+13) If "CANCELLED" is written on form, mention in signatures_notes but do not count as signature
 
 Return ONLY the JSON object.
 """.trimIndent()
@@ -649,21 +512,181 @@ Return ONLY the JSON object.
          """
      }*/
 
-    private fun createENachPrompt(): String {
+private fun createENachPrompt(): String {
         return """
-        You are an expert OCR system for Indian e-NACH forms. Extract the following in JSON format:
-        {
-            "account_holder_name": "Customer name",
-            "bank_name": "Bank name",
-            "account_number": "Account number",
-            "ifsc_code": "IFSC code",
-            "micr_code": "MICR code",
-            "signature_present": true/false,
-            "document_quality": "good/poor/blurry/glare/cropped",
-            "document_type": "original/photocopy/handwritten/printed"
-        }
-        Rules: Return only JSON. Customer signature is mandatory.
-        """
+        You are an expert OCR system for Indian e-NACH forms. You are also an expert signature detection system for Indian e-NACH forms. Extract ONLY the requested fields in valid JSON.
+        
+OUTPUT SCHEMA (return ONLY this JSON; no extra text):
+{
+  "account_holder_name": "",
+  "bank_name": "",
+  "account_number": "",
+  "ifsc_code": "",
+  "micr_code": "",
+  "signature_present": false,
+  "document_quality": "good",
+  "document_type": "printed",
+  "fraud_indicators": [],
+
+  "rotation_applied": 0,
+
+  "signature_count": 0,
+  "signatures_consistent": null,
+  "signatures_match_score": 0,
+  "signatures_notes": "",
+  
+  "payer_signatures_match": null,
+  "sponsor_signatures_match": null,
+  "payer_match_score": 0,
+  "sponsor_match_score": 0,
+
+  "signature_regions": [
+    {
+      "bbox": {"x":0.0,"y":0.0,"w":0.0,"h":0.0},
+      "group": "unknown",
+      "position_number": 0,
+      "anchor_text": "",
+      "evidence": ""
+    }
+  ],
+
+  "signature_count_payer": 0,
+  "signature_count_sponsor": 0,
+  "signature_count_unknown": 0,
+
+  "expected_signatures": {"payer": 2, "sponsor": 2},
+  "missing_expected_signatures": []
+}
+
+Rules:
+1) Return ONLY valid JSON exactly matching the schema above. Use "" (empty string) or [] when unreadable/unknown.
+2) Prioritize the printed "account_holder_name".
+3) "fraud_indicators" only for visible issues (e.g., mismatched signatures, copy-pasted signatures).
+4) Be conservative and cite only what is visible.
+
+ORIENTATION & SWEEP:
+5) Normalize orientation so the form reads horizontally; set "rotation_applied" to 0/90/180/270.
+6) Scan the entire image edge-to-edge, with EXTRA attention to the bottom strip where signatures appear.
+
+CRITICAL e-NACH SIGNATURE DETECTION PATTERN:
+7) MANDATORY for e-NACH forms: You MUST find exactly 4 handwritten signatures arranged as follows:
+    
+    STANDARD e-NACH SIGNATURE LAYOUT (from left to right):
+    ┌─────────────────────────────────────────────────────────────┐
+    │  Position 1          Position 2          Position 3          Position 4    │
+    │  [PAYER SIG]        [SPONSOR SIG]       [PAYER SIG]        [SPONSOR SIG]  │
+    │  Above text:        Above text:         Above text:         Above text:    │
+    │  "PARTNER" or       Company name        "PARTNER" or       Company name   │
+    │  Customer label     "For [COMPANY]"     Customer label     "For [COMPANY]"│
+    └─────────────────────────────────────────────────────────────┘
+    
+    The pattern is: PAYER-SPONSOR-PAYER-SPONSOR (alternating)
+    - Positions 1 & 3: Customer/Payer signatures (should match each other)
+    - Positions 2 & 4: Company/Sponsor signatures (should match each other)
+
+8) SIGNATURE POSITION IDENTIFICATION:
+    Position 1 (Leftmost): PAYER signature - look for "PARTNER", "Authorised Signatory" without company name
+    Position 2 (Left-Center): SPONSOR signature - look for "For [COMPANY NAME]" or company-specific text
+    Position 3 (Right-Center): PAYER signature - similar anchor text as Position 1
+    Position 4 (Rightmost): SPONSOR signature - similar anchor text as Position 2
+    
+    Common anchor texts for PAYER: "PARTNER", "Authorised Signatory", "Customer"
+    Common anchor texts for SPONSOR: "For SHAREHOLDER AND SERVICES", "For JUSTDIAL LIMITED", company names
+
+9) SIGNATURE IDENTIFICATION CHARACTERISTICS:
+    - Signatures are HANDWRITTEN CURSIVE text above the printed labels
+    - They look like flowing, connected handwriting (not printed block letters)
+    - Each signature is typically a person's name written in cursive/script style
+    - Look ABOVE the printed text labels, not below
+    - EXCLUDE any "CANCELLED", "CANCEL", "VOID" text - these are NOT signatures
+
+10) SCAN METHOD - Check these 4 positions systematically:
+    a) Scan leftmost area → Find PAYER signature → Set position_number=1
+    b) Scan left-center → Find SPONSOR signature → Set position_number=2
+    c) Scan right-center → Find PAYER signature → Set position_number=3
+    d) Scan rightmost area → Find SPONSOR signature → Set position_number=4
+
+11) FOR EACH OF THE 4 SIGNATURES:
+    - Add entry to "signature_regions" array
+    - Set "position_number" (1-4) based on left-to-right position
+    - Set bbox to approximate location
+    - Set "anchor_text" to the printed text below the signature
+    - Set "evidence" to describe location and appearance
+    - Set "group" to "payer" for positions 1 & 3, "sponsor" for positions 2 & 4
+
+12) VALIDATION: 
+    - signature_count MUST equal 4 for e-NACH forms
+    - signature_count_payer MUST equal 2 (positions 1 & 3)
+    - signature_count_sponsor MUST equal 2 (positions 2 & 4)
+    - If you find fewer, re-scan more carefully
+
+FALLBACK SCAN (if 4 signatures not found):
+13) If you cannot find 4 signatures in the expected positions, perform a broader scan of the document.
+14) Look for any other handwritten signatures, and if found, add them to the `signature_regions` with `group` as `unknown`.
+15) In `signatures_notes`, describe where the extra signatures were found and why they were not assigned to a standard position.
+
+GROUPING AND POSITION ASSIGNMENT:
+16) Use the position and anchor text to determine group:
+    - Positions 1 & 3 → "payer" group (customer signatures)
+    - Positions 2 & 4 → "sponsor" group (company signatures)
+    - If unclear from position alone, use anchor text as secondary indicator
+
+17) Set per-group counts:
+    - "signature_count_payer" = count of payer signatures (should be 2)
+    - "signature_count_sponsor" = count of sponsor signatures (should be 2)
+    - "signature_count" = total signatures (should be 4)
+    - "signature_present" = true (if signature_count ≥ 1)
+
+MULTI-SIGNATURE MATCHING (e-NACH specific):
+18) PAYER SIGNATURE MATCHING (positions 1 & 3):
+    - Compare the two payer signatures to each other
+    - Check handwriting style, slant, loops, baseline, stroke patterns
+    - Set "payer_match_score": 0-100 (90-100=very likely same, 75-89=likely same, <60=different)
+    - Set "payer_signatures_match": true if ≥75, false if <60, null if unclear
+
+19) SPONSOR SIGNATURE MATCHING (positions 2 & 4):
+    - Compare the two sponsor signatures to each other
+    - Check handwriting style, slant, loops, baseline, stroke patterns
+    - Set "sponsor_match_score": 0-100 (90-100=very likely same, 75-89=likely same, <60=different)
+    - Set "sponsor_signatures_match": true if ≥75, false if <60, null if unclear
+
+20) OVERALL SIGNATURE CONSISTENCY:
+    - "signatures_consistent" = true only if BOTH payer_signatures_match AND sponsor_signatures_match are true
+    - "signatures_match_score" = average of payer_match_score and sponsor_match_score
+    - Add detailed notes in "signatures_notes" about the matching results
+
+EXPECTATION HEURISTICS:
+21) For e-NACH forms, always expect:
+    - Exactly 4 signatures total
+    - 2 payer signatures that should match each other
+    - 2 sponsor signatures that should match each other
+    - Set "expected_signatures": {"payer": 2, "sponsor": 2}
+
+22) If fewer than 4 signatures found:
+    - List missing positions in "missing_expected_signatures"
+    - Re-scan the image more carefully before finalizing
+
+QUALITY & FRAUD:
+23) Only mark fraud if there are tampering signs. Pure blur/glare is NOT fraud.
+24) Common fraud indicators for e-NACH: mismatched signatures within same group, copy-pasted signatures, digitally added signatures
+
+FINAL VALIDATIONS:
+25) For e-NACH forms:
+    - Verify signature_count == 4
+    - Verify signature_count_payer == 2
+    - Verify signature_count_sponsor == 2
+    - Verify each signature has correct position_number (1-4)
+    - Verify payer_signatures_match and sponsor_signatures_match are evaluated
+26) Double-check you found ALL 4 signatures before returning
+27) Ensure "CANCELLED" text is never counted as a signature
+
+CRITICAL OUTPUT REQUIREMENT:
+28) The system consuming this JSON expects separate matching scores for payer vs sponsor signatures
+29) DO NOT compare payer signatures to sponsor signatures - only compare within each group
+30) The key business logic is: payer signatures (1&3) should match, sponsor signatures (2&4) should match
+
+Return ONLY the JSON object.
+        """.trimIndent()
     }
 
 }
